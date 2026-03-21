@@ -77,16 +77,17 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 
 	case "Page.captureScreenshot":
 		var params struct {
-			Format      string `json:"format"`
-			Quality     int    `json:"quality"`
-			Clip        *struct {
+			Format                string `json:"format"`
+			Quality               int    `json:"quality"`
+			Clip                  *struct {
 				X      float64 `json:"x"`
 				Y      float64 `json:"y"`
 				Width  float64 `json:"width"`
 				Height float64 `json:"height"`
 				Scale  float64 `json:"scale"`
 			} `json:"clip"`
-			FromSurface bool `json:"fromSurface"`
+			FromSurface           bool `json:"fromSurface"`
+			CaptureBeyondViewport bool `json:"captureBeyondViewport"`
 		}
 		if msg.Params != nil {
 			json.Unmarshal(msg.Params, &params)
@@ -107,6 +108,9 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 				"width":  params.Clip.Width,
 				"height": params.Clip.Height,
 			}
+		}
+		if params.CaptureBeyondViewport {
+			jugglerParams["fullPage"] = true
 		}
 
 		result, err := b.callJuggler(msg.SessionID, "Page.screenshot", jugglerParams)
@@ -468,6 +472,158 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 
 	case "Page.navigateToHistoryEntry":
 		return json.RawMessage(`{}`), nil
+
+	case "Page.printToPDF":
+		var params struct {
+			Landscape           bool    `json:"landscape"`
+			DisplayHeaderFooter bool    `json:"displayHeaderFooter"`
+			PrintBackground     bool    `json:"printBackground"`
+			Scale               float64 `json:"scale"`
+			PaperWidth          float64 `json:"paperWidth"`
+			PaperHeight         float64 `json:"paperHeight"`
+			MarginTop           float64 `json:"marginTop"`
+			MarginBottom        float64 `json:"marginBottom"`
+			MarginLeft          float64 `json:"marginLeft"`
+			MarginRight         float64 `json:"marginRight"`
+			HeaderTemplate      string  `json:"headerTemplate"`
+			FooterTemplate      string  `json:"footerTemplate"`
+			PreferCSSPageSize   bool    `json:"preferCSSPageSize"`
+			PageRanges          string  `json:"pageRanges"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+
+		jugglerParams := map[string]interface{}{}
+		if params.Landscape {
+			jugglerParams["landscape"] = true
+		}
+		if params.DisplayHeaderFooter {
+			jugglerParams["displayHeaderFooter"] = true
+		}
+		if params.PrintBackground {
+			jugglerParams["printBackground"] = true
+		}
+		if params.Scale != 0 {
+			jugglerParams["scale"] = params.Scale
+		}
+		if params.PaperWidth != 0 {
+			jugglerParams["paperWidth"] = params.PaperWidth
+		}
+		if params.PaperHeight != 0 {
+			jugglerParams["paperHeight"] = params.PaperHeight
+		}
+		if params.MarginTop != 0 {
+			jugglerParams["marginTop"] = params.MarginTop
+		}
+		if params.MarginBottom != 0 {
+			jugglerParams["marginBottom"] = params.MarginBottom
+		}
+		if params.MarginLeft != 0 {
+			jugglerParams["marginLeft"] = params.MarginLeft
+		}
+		if params.MarginRight != 0 {
+			jugglerParams["marginRight"] = params.MarginRight
+		}
+		if params.HeaderTemplate != "" {
+			jugglerParams["headerTemplate"] = params.HeaderTemplate
+		}
+		if params.FooterTemplate != "" {
+			jugglerParams["footerTemplate"] = params.FooterTemplate
+		}
+		if params.PreferCSSPageSize {
+			jugglerParams["preferCSSPageSize"] = true
+		}
+		if params.PageRanges != "" {
+			jugglerParams["pageRanges"] = params.PageRanges
+		}
+
+		result, err := b.callJuggler(msg.SessionID, "Page.printToPDF", jugglerParams)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+
+		var pdfResult struct {
+			Data string `json:"data"`
+		}
+		json.Unmarshal(result, &pdfResult)
+
+		return marshalResult(map[string]interface{}{
+			"data":   pdfResult.Data,
+			"stream": nil,
+		})
+
+	case "Page.removeScriptToEvaluateOnNewDocument":
+		var params struct {
+			Identifier string `json:"identifier"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+
+		if params.Identifier != "" {
+			_, err := b.callJuggler(msg.SessionID, "Page.removeScriptToEvaluateOnNewDocument", map[string]interface{}{
+				"scriptId": params.Identifier,
+			})
+			if err != nil {
+				log.Printf("[page] removeScriptToEvaluateOnNewDocument failed: %v", err)
+			}
+		}
+		return json.RawMessage(`{}`), nil
+
+	case "Page.setExtraHTTPHeaders":
+		var params struct {
+			Headers map[string]string `json:"headers"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
+		}
+
+		jugglerParams := map[string]interface{}{
+			"headers": params.Headers,
+		}
+		if msg.SessionID != "" {
+			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
+				jugglerParams["browserContextId"] = info.BrowserContextID
+			}
+		}
+
+		_, err := b.callJuggler("", "Browser.setExtraHTTPHeaders", jugglerParams)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return json.RawMessage(`{}`), nil
+
+	case "Page.resetNavigationHistory":
+		// No-op — Juggler does not support navigation history manipulation.
+		return json.RawMessage(`{}`), nil
+
+	case "Page.getResourceTree":
+		frameID := ""
+		pageURL := "about:blank"
+		if info, ok := b.sessions.Get(msg.SessionID); ok {
+			frameID = info.FrameID
+			if info.URL != "" {
+				pageURL = info.URL
+			}
+		}
+		if frameID == "" {
+			frameID = "main"
+		}
+
+		return marshalResult(map[string]interface{}{
+			"frameTree": map[string]interface{}{
+				"frame": map[string]interface{}{
+					"id":             frameID,
+					"loaderId":       "",
+					"url":            pageURL,
+					"securityOrigin": "",
+					"mimeType":       "text/html",
+				},
+				"childFrames": []interface{}{},
+				"resources":   []interface{}{},
+			},
+		})
 
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}

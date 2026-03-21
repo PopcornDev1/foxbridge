@@ -595,6 +595,43 @@ func (b *Bridge) SetupEventSubscriptions() {
 			"canceled":     false,
 		}, cdpSessionID)
 	})
+
+	// Browser.requestIntercepted → Fetch.requestPaused
+	b.backend.Subscribe("Browser.requestIntercepted", func(jugglerSessionID string, params json.RawMessage) {
+		var ev struct {
+			RequestID string `json:"requestId"`
+			Request   struct {
+				URL     string            `json:"url"`
+				Method  string            `json:"method"`
+				Headers map[string]string `json:"headers"`
+			} `json:"request"`
+			FrameID              string `json:"frameId"`
+			IsNavigationRequest  bool   `json:"isNavigationRequest"`
+		}
+		if err := json.Unmarshal(params, &ev); err != nil {
+			log.Printf("events: failed to parse Browser.requestIntercepted: %v", err)
+			return
+		}
+
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+
+		// Determine resource type from navigation flag
+		resourceType := "Other"
+		if ev.IsNavigationRequest {
+			resourceType = "Document"
+		}
+
+		b.emitEvent("Fetch.requestPaused", map[string]interface{}{
+			"requestId": ev.RequestID,
+			"request": map[string]interface{}{
+				"url":     ev.Request.URL,
+				"method":  ev.Request.Method,
+				"headers": ev.Request.Headers,
+			},
+			"frameId":      ev.FrameID,
+			"resourceType": resourceType,
+		}, cdpSessionID)
+	})
 }
 
 // emitTabAttach emits ONLY the tab-level attachment on the browser session.
