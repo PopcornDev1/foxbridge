@@ -1,13 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
-
-	"encoding/json"
 
 	"github.com/PopcornDev1/foxbridge/pkg/bridge"
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
@@ -56,24 +55,11 @@ func main() {
 		b.HandleMessage(conn, msg)
 	})
 
-	// 5. Create bridge.
+	// 5. Create bridge and set up Juggler → CDP event subscriptions.
 	b = bridge.New(backend, sessions, server)
+	b.SetupEventSubscriptions()
 
-	// 6. Subscribe to Juggler events and forward as CDP events.
-	backend.Subscribe("Browser.pageCreated", func(sessionID string, params json.RawMessage) {
-		server.Broadcast(&cdp.Message{
-			Method: "Target.targetCreated",
-			Params: params,
-		})
-	})
-	backend.Subscribe("Browser.pageDestroyed", func(sessionID string, params json.RawMessage) {
-		server.Broadcast(&cdp.Message{
-			Method: "Target.targetDestroyed",
-			Params: params,
-		})
-	})
-
-	// 7. Start server in background.
+	// 6. Start server in background.
 	go func() {
 		if err := server.Start(); err != nil {
 			log.Fatalf("CDP server error: %v", err)
@@ -82,7 +68,7 @@ func main() {
 
 	log.Printf("foxbridge CDP proxy listening on 127.0.0.1:%d", *port)
 
-	// 8. Wait for signal or Firefox exit.
+	// 7. Wait for signal or Firefox exit.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 

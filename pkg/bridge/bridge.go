@@ -49,6 +49,8 @@ func (b *Bridge) HandleMessage(conn *cdp.Connection, msg *cdp.Message) {
 		result, cdpErr = b.handleDOM(conn, msg)
 	case strings.HasPrefix(method, "Accessibility."):
 		result, cdpErr = b.handleAccessibility(conn, msg)
+	case strings.HasPrefix(method, "Console."):
+		result, cdpErr = b.handleConsole(conn, msg)
 	default:
 		result, cdpErr = b.handleStub(conn, msg)
 	}

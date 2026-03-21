@@ -15,16 +15,18 @@ type SessionInfo struct {
 
 // SessionManager tracks CDP sessions and their mappings to Juggler sessions.
 type SessionManager struct {
-	mu       sync.RWMutex
-	sessions map[string]*SessionInfo // keyed by CDP sessionID
-	targets  map[string]*SessionInfo // keyed by targetID
+	mu              sync.RWMutex
+	sessions        map[string]*SessionInfo // keyed by CDP sessionID
+	targets         map[string]*SessionInfo // keyed by targetID
+	jugglerSessions map[string]*SessionInfo // keyed by Juggler sessionID
 }
 
 // NewSessionManager creates a new session manager.
 func NewSessionManager() *SessionManager {
 	return &SessionManager{
-		sessions: make(map[string]*SessionInfo),
-		targets:  make(map[string]*SessionInfo),
+		sessions:        make(map[string]*SessionInfo),
+		targets:         make(map[string]*SessionInfo),
+		jugglerSessions: make(map[string]*SessionInfo),
 	}
 }
 
@@ -36,6 +38,9 @@ func (sm *SessionManager) Add(info *SessionInfo) {
 	if info.TargetID != "" {
 		sm.targets[info.TargetID] = info
 	}
+	if info.JugglerSessionID != "" {
+		sm.jugglerSessions[info.JugglerSessionID] = info
+	}
 }
 
 // Remove deletes a session by CDP session ID.
@@ -44,6 +49,7 @@ func (sm *SessionManager) Remove(sessionID string) {
 	defer sm.mu.Unlock()
 	if info, ok := sm.sessions[sessionID]; ok {
 		delete(sm.targets, info.TargetID)
+		delete(sm.jugglerSessions, info.JugglerSessionID)
 		delete(sm.sessions, sessionID)
 	}
 }
@@ -61,6 +67,14 @@ func (sm *SessionManager) GetByTarget(targetID string) (*SessionInfo, bool) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	info, ok := sm.targets[targetID]
+	return info, ok
+}
+
+// GetByJugglerSession returns session info by Juggler session ID.
+func (sm *SessionManager) GetByJugglerSession(jugglerSessionID string) (*SessionInfo, bool) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	info, ok := sm.jugglerSessions[jugglerSessionID]
 	return info, ok
 }
 
