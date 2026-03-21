@@ -35,43 +35,85 @@ func (b *Bridge) SetupEventSubscriptions() {
 			targetType = "page"
 		}
 
-		// Create a CDP session for this target.
-		cdpSessionID := uuid.New().String()
+		// Chrome uses a two-level session: tab → page.
+		// Puppeteer expects: attachedToTarget(type=tab) on browser session,
+		// then attachedToTarget(type=page) on the tab session.
+		tabSessionID := uuid.New().String()
+		pageSessionID := uuid.New().String()
+		tabTargetID := uuid.New().String()
+
+		// Register the PAGE session (what actually talks to Juggler)
 		b.sessions.Add(&cdp.SessionInfo{
-			SessionID:        cdpSessionID,
+			SessionID:        pageSessionID,
 			JugglerSessionID: jugglerSessionID,
 			TargetID:         targetID,
 			BrowserContextID: ev.TargetInfo.BrowserContextID,
 			URL:              ev.TargetInfo.URL,
-			Type:             targetType,
+			Type:             "page",
+		})
+		// Register the TAB session (stub — routes to same Juggler session)
+		b.sessions.Add(&cdp.SessionInfo{
+			SessionID:        tabSessionID,
+			JugglerSessionID: jugglerSessionID,
+			TargetID:         tabTargetID,
+			BrowserContextID: ev.TargetInfo.BrowserContextID,
+			URL:              ev.TargetInfo.URL,
+			Type:             "tab",
 		})
 
-		// Emit Target.targetCreated
+		// Step 1: Emit tab target created + attached on browser session
+		b.emitEvent("Target.targetCreated", map[string]interface{}{
+			"targetInfo": map[string]interface{}{
+				"targetId":         tabTargetID,
+				"type":             "tab",
+				"title":            "",
+				"url":              ev.TargetInfo.URL,
+				"attached":         true,
+				"canAccessOpener":  false,
+				"browserContextId": ev.TargetInfo.BrowserContextID,
+			},
+		}, "")
+
+		b.emitEvent("Target.attachedToTarget", map[string]interface{}{
+			"sessionId": tabSessionID,
+			"targetInfo": map[string]interface{}{
+				"targetId":         tabTargetID,
+				"type":             "tab",
+				"title":            "",
+				"url":              ev.TargetInfo.URL,
+				"attached":         true,
+				"canAccessOpener":  false,
+				"browserContextId": ev.TargetInfo.BrowserContextID,
+			},
+			"waitingForDebugger": true,
+		}, "")
+
+		// Step 2: Emit page target created + attached on the TAB session
 		b.emitEvent("Target.targetCreated", map[string]interface{}{
 			"targetInfo": map[string]interface{}{
 				"targetId":         targetID,
-				"type":             targetType,
+				"type":             "page",
 				"title":            "",
 				"url":              ev.TargetInfo.URL,
 				"attached":         true,
+				"canAccessOpener":  false,
 				"browserContextId": ev.TargetInfo.BrowserContextID,
-				"openerId":         ev.TargetInfo.OpenerId,
 			},
-		}, "")
+		}, tabSessionID)
 
-		// Emit Target.attachedToTarget
 		b.emitEvent("Target.attachedToTarget", map[string]interface{}{
-			"sessionId": cdpSessionID,
+			"sessionId": pageSessionID,
 			"targetInfo": map[string]interface{}{
 				"targetId":         targetID,
-				"type":             targetType,
+				"type":             "page",
 				"title":            "",
 				"url":              ev.TargetInfo.URL,
 				"attached":         true,
+				"canAccessOpener":  false,
 				"browserContextId": ev.TargetInfo.BrowserContextID,
 			},
-			"waitingForDebugger": false,
-		}, "")
+			"waitingForDebugger": true,
+		}, tabSessionID)
 	})
 
 	// Browser.detachedFromTarget — page destroyed.

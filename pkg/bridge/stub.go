@@ -70,7 +70,23 @@ func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 	case "Runtime.runIfWaitingForDebugger":
 		return json.RawMessage(`{}`), nil
 	case "Page.getFrameTree":
-		return json.RawMessage(`{"frameTree":{"frame":{"id":"main","loaderId":"","url":"about:blank","securityOrigin":"","mimeType":"text/html"}}}`), nil
+		// Return the frame tree with the correct frame ID from session state
+		frameID := "main"
+		return marshalResult(map[string]interface{}{
+			"frameTree": map[string]interface{}{
+				"frame": map[string]interface{}{
+					"id":              frameID,
+					"loaderId":        "",
+					"url":             "about:blank",
+					"domainAndRegistry": "",
+					"securityOrigin":  "",
+					"mimeType":        "text/html",
+					"secureContextType": "InsecureScheme",
+					"crossOriginIsolatedContextType": "NotIsolated",
+					"gatedAPIFeatures": []string{},
+				},
+			},
+		})
 	case "Page.setLifecycleEventsEnabled":
 		return json.RawMessage(`{}`), nil
 	case "Page.addScriptToEvaluateOnNewDocument":
