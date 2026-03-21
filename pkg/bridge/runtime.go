@@ -70,15 +70,24 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			b.ctxMapMu.RUnlock()
 		}
 
+		// If awaitPromise is requested, wrap the expression so the promise is resolved
+		// before returning. Juggler's Runtime.evaluate doesn't support awaitPromise natively.
+		expression := params.Expression
+		if params.AwaitPromise {
+			// Wrap in an async IIFE that awaits the result. Juggler will evaluate
+			// this synchronously, but the await inside handles promise resolution.
+			// We use a special wrapper that Juggler can handle.
+			expression = fmt.Sprintf(`(async () => { return await (%s) })()`, expression)
+		}
+
 		// Juggler only accepts: executionContextId, expression, returnByValue
 		jugglerParams := map[string]interface{}{
-			"expression":    params.Expression,
+			"expression":    expression,
 			"returnByValue": params.ReturnByValue,
 		}
 		if execCtxID != "" {
 			jugglerParams["executionContextId"] = execCtxID
 		}
-		// Note: awaitPromise is NOT supported by Juggler's Runtime.evaluate
 
 		log.Printf("[runtime] calling Juggler Runtime.evaluate with %v", jugglerParams)
 		result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", jugglerParams)
@@ -114,13 +123,22 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			b.ctxMapMu.RUnlock()
 		}
 
-		// Juggler callFunction only accepts: executionContextId, functionDeclaration, returnByValue, args
+		// If awaitPromise, wrap the function to await its result
+		funcDecl := params.FunctionDeclaration
+		if params.AwaitPromise {
+			funcDecl = fmt.Sprintf(`async function(...args) { return await (%s).apply(this, args) }`, funcDecl)
+		}
+
+		// Juggler callFunction accepts: executionContextId, functionDeclaration, returnByValue, args, objectId
 		jugglerParams := map[string]interface{}{
-			"functionDeclaration": params.FunctionDeclaration,
+			"functionDeclaration": funcDecl,
 			"returnByValue":      params.ReturnByValue,
 		}
 		if execCtxID != "" {
 			jugglerParams["executionContextId"] = execCtxID
+		}
+		if params.ObjectID != "" {
+			jugglerParams["objectId"] = params.ObjectID
 		}
 		if params.Arguments != nil {
 			jugglerParams["args"] = params.Arguments

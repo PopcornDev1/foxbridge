@@ -293,10 +293,9 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 
 	// Runtime.executionContextCreated → Runtime.executionContextCreated
-	var ctxCounter int
 	b.backend.Subscribe("Runtime.executionContextCreated", func(jugglerSessionID string, params json.RawMessage) {
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
-		ctxCounter++
+		ctxID := b.nextCtxID()
 
 		var ev struct {
 			ExecutionContextID string `json:"executionContextId"`
@@ -325,12 +324,12 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		// Store the mapping: numeric CDP ID → Juggler string ID
 		b.ctxMapMu.Lock()
-		b.ctxMap[ctxCounter] = ev.ExecutionContextID
+		b.ctxMap[ctxID] = ev.ExecutionContextID
 		b.ctxMapMu.Unlock()
 
 		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
 			"context": map[string]interface{}{
-				"id":       ctxCounter,
+				"id":       ctxID,
 				"origin":   "",
 				"name":     ev.AuxData.Name,
 				"uniqueId": ev.ExecutionContextID,
@@ -351,8 +350,26 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 		json.Unmarshal(params, &ev)
 
+		// Find the numeric CDP context ID for this Juggler context
+		var numericID int
+		b.ctxMapMu.RLock()
+		for k, v := range b.ctxMap {
+			if v == ev.ExecutionContextID {
+				numericID = k
+				break
+			}
+		}
+		b.ctxMapMu.RUnlock()
+
+		// Clean up the mapping
+		if numericID > 0 {
+			b.ctxMapMu.Lock()
+			delete(b.ctxMap, numericID)
+			b.ctxMapMu.Unlock()
+		}
+
 		b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
-			"executionContextId":       ctxCounter, // use last known
+			"executionContextId":       numericID,
 			"executionContextUniqueId": ev.ExecutionContextID,
 		}, cdpSessionID)
 	})
@@ -419,6 +436,163 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.emitEvent("Page.frameDetached", map[string]interface{}{
 			"frameId": ev.FrameID,
 			"reason":  "remove",
+		}, cdpSessionID)
+	})
+
+	// Page.dialogOpened → Page.javascriptDialogOpening
+	b.backend.Subscribe("Page.dialogOpened", func(jugglerSessionID string, params json.RawMessage) {
+		var ev struct {
+			Type         string `json:"type"`
+			Message      string `json:"message"`
+			DefaultValue string `json:"defaultValue"`
+		}
+		if err := json.Unmarshal(params, &ev); err != nil {
+			log.Printf("events: failed to parse Page.dialogOpened: %v", err)
+			return
+		}
+
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+
+		b.emitEvent("Page.javascriptDialogOpening", map[string]interface{}{
+			"type":               ev.Type,
+			"message":            ev.Message,
+			"defaultPrompt":      ev.DefaultValue,
+			"hasBrowserHandler":  false,
+			"url":                "",
+		}, cdpSessionID)
+	})
+
+	// Page.dialogClosed → Page.javascriptDialogClosed
+	b.backend.Subscribe("Page.dialogClosed", func(jugglerSessionID string, params json.RawMessage) {
+		var ev struct {
+			Accepted bool `json:"accepted"`
+		}
+		json.Unmarshal(params, &ev)
+
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+
+		b.emitEvent("Page.javascriptDialogClosed", map[string]interface{}{
+			"result":    ev.Accepted,
+			"userInput": "",
+		}, cdpSessionID)
+	})
+
+	// Network.requestWillBeSent → Network.requestWillBeSent
+	b.backend.Subscribe("Network.requestWillBeSent", func(jugglerSessionID string, params json.RawMessage) {
+		var ev struct {
+			RequestID    string `json:"requestId"`
+			FrameID      string `json:"frameId"`
+			URL          string `json:"url"`
+			Method       string `json:"method"`
+			Headers      map[string]string `json:"headers"`
+			IsNavigation bool   `json:"isNavigationRequest"`
+			RedirectURL  string `json:"redirectedFrom"`
+		}
+		if err := json.Unmarshal(params, &ev); err != nil {
+			return
+		}
+
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+
+		cdpHeaders := map[string]string{}
+		for k, v := range ev.Headers {
+			cdpHeaders[k] = v
+		}
+
+		b.emitEvent("Network.requestWillBeSent", map[string]interface{}{
+			"requestId": ev.RequestID,
+			"loaderId":  ev.RequestID,
+			"documentURL": ev.URL,
+			"request": map[string]interface{}{
+				"url":             ev.URL,
+				"method":          ev.Method,
+				"headers":         cdpHeaders,
+				"initialPriority": "High",
+				"referrerPolicy":  "strict-origin-when-cross-origin",
+			},
+			"timestamp": 0,
+			"wallTime":  0,
+			"initiator": map[string]interface{}{
+				"type": "other",
+			},
+			"type":    "Document",
+			"frameId": ev.FrameID,
+		}, cdpSessionID)
+	})
+
+	// Network.responseReceived → Network.responseReceived
+	b.backend.Subscribe("Network.responseReceived", func(jugglerSessionID string, params json.RawMessage) {
+		var ev struct {
+			RequestID  string `json:"requestId"`
+			SecurityDetails json.RawMessage `json:"securityDetails"`
+			FromCache  bool   `json:"fromCache"`
+			Headers    map[string]string `json:"headers"`
+			Status     int    `json:"status"`
+			StatusText string `json:"statusText"`
+			URL        string `json:"url"`
+			FrameID    string `json:"frameId"`
+		}
+		if err := json.Unmarshal(params, &ev); err != nil {
+			return
+		}
+
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+
+		b.emitEvent("Network.responseReceived", map[string]interface{}{
+			"requestId": ev.RequestID,
+			"loaderId":  ev.RequestID,
+			"timestamp": 0,
+			"type":      "Document",
+			"response": map[string]interface{}{
+				"url":                ev.URL,
+				"status":             ev.Status,
+				"statusText":         ev.StatusText,
+				"headers":            ev.Headers,
+				"mimeType":           "",
+				"connectionReused":   false,
+				"connectionId":       0,
+				"encodedDataLength":  0,
+				"fromDiskCache":      ev.FromCache,
+				"fromServiceWorker":  false,
+				"fromPrefetchCache":  false,
+				"securityState":      "secure",
+			},
+			"frameId": ev.FrameID,
+		}, cdpSessionID)
+	})
+
+	// Network.requestFinished → Network.loadingFinished
+	b.backend.Subscribe("Network.requestFinished", func(jugglerSessionID string, params json.RawMessage) {
+		var ev struct {
+			RequestID string `json:"requestId"`
+		}
+		json.Unmarshal(params, &ev)
+
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+
+		b.emitEvent("Network.loadingFinished", map[string]interface{}{
+			"requestId":         ev.RequestID,
+			"timestamp":         0,
+			"encodedDataLength": 0,
+		}, cdpSessionID)
+	})
+
+	// Network.requestFailed → Network.loadingFailed
+	b.backend.Subscribe("Network.requestFailed", func(jugglerSessionID string, params json.RawMessage) {
+		var ev struct {
+			RequestID    string `json:"requestId"`
+			ErrorCode    string `json:"errorCode"`
+		}
+		json.Unmarshal(params, &ev)
+
+		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+
+		b.emitEvent("Network.loadingFailed", map[string]interface{}{
+			"requestId":    ev.RequestID,
+			"timestamp":    0,
+			"type":         "Document",
+			"errorText":    ev.ErrorCode,
+			"canceled":     false,
 		}, cdpSessionID)
 	})
 }

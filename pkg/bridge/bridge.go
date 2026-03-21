@@ -17,8 +17,9 @@ type Bridge struct {
 	server     *cdp.Server
 	autoAttach *autoAttachState
 	// ctxMap maps numeric CDP execution context IDs to Juggler execution context ID strings
-	ctxMapMu sync.RWMutex
-	ctxMap   map[int]string // cdpContextID → jugglerContextID
+	ctxMapMu   sync.RWMutex
+	ctxMap     map[int]string // cdpContextID → jugglerContextID
+	ctxCounter int            // monotonic counter for execution context IDs
 }
 
 // New creates a new Bridge.
@@ -29,6 +30,7 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *B
 		server:     server,
 		autoAttach: newAutoAttachState(),
 		ctxMap:     make(map[int]string),
+		ctxCounter: 100, // start high to avoid collision with early contexts
 	}
 }
 
@@ -103,6 +105,15 @@ func (b *Bridge) callJuggler(cdpSessionID, method string, params interface{}) (j
 		}
 	}
 	return b.backend.Call(sessionID, method, raw)
+}
+
+// nextCtxID allocates a new unique execution context ID.
+func (b *Bridge) nextCtxID() int {
+	b.ctxMapMu.Lock()
+	b.ctxCounter++
+	id := b.ctxCounter
+	b.ctxMapMu.Unlock()
+	return id
 }
 
 // emitEvent sends a CDP event to all connected clients.

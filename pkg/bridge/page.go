@@ -177,10 +177,271 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		return json.RawMessage(`{}`), nil
 
 	case "Page.addScriptToEvaluateOnNewDocument":
+		var params struct {
+			Source string `json:"source"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+
+		if params.Source != "" {
+			result, err := b.callJuggler(msg.SessionID, "Page.addScriptToEvaluateOnNewDocument", map[string]interface{}{
+				"script": params.Source,
+			})
+			if err != nil {
+				log.Printf("[page] addScriptToEvaluateOnNewDocument failed: %v, returning stub", err)
+				return marshalResult(map[string]string{"identifier": "1"})
+			}
+			// Juggler returns { scriptId }
+			var scriptResult struct {
+				ScriptID string `json:"scriptId"`
+			}
+			json.Unmarshal(result, &scriptResult)
+			id := scriptResult.ScriptID
+			if id == "" {
+				id = "1"
+			}
+			return marshalResult(map[string]string{"identifier": id})
+		}
 		return marshalResult(map[string]string{"identifier": "1"})
 
 	case "Page.createIsolatedWorld":
-		return marshalResult(map[string]interface{}{"executionContextId": 1})
+		var params struct {
+			FrameID              string `json:"frameId"`
+			WorldName            string `json:"worldName"`
+			GrantUniversalAccess bool   `json:"grantUniveralAccess"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+
+		// Allocate a unique numeric context ID
+		ctxID := b.nextCtxID()
+
+		// Map it to the MAIN world's Juggler execution context for this session.
+		// Juggler doesn't have true isolated worlds — evaluations go through the same context.
+		b.ctxMapMu.Lock()
+		// Find the latest Juggler context for this session
+		latestJugglerCtx := ""
+		for _, v := range b.ctxMap {
+			latestJugglerCtx = v
+		}
+		if latestJugglerCtx != "" {
+			b.ctxMap[ctxID] = latestJugglerCtx
+		}
+		b.ctxMapMu.Unlock()
+
+		uniqueID := fmt.Sprintf("isolated-%s-%s", params.FrameID, params.WorldName)
+
+		// Emit Runtime.executionContextCreated so Puppeteer registers this world
+		go func() {
+			b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
+				"context": map[string]interface{}{
+					"id":       ctxID,
+					"origin":   "",
+					"name":     params.WorldName,
+					"uniqueId": uniqueID,
+					"auxData": map[string]interface{}{
+						"isDefault": false,
+						"type":      "isolated",
+						"frameId":   params.FrameID,
+					},
+				},
+			}, msg.SessionID)
+		}()
+
+		return marshalResult(map[string]interface{}{"executionContextId": ctxID})
+
+	case "Page.setContent":
+		// Puppeteer uses this to set page HTML content.
+		// Juggler doesn't have a direct equivalent — use Runtime.evaluate.
+		var params struct {
+			HTML    string `json:"html"`
+			FrameID string `json:"frameId"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+		if params.HTML == "" {
+			return json.RawMessage(`{}`), nil
+		}
+
+		// Use document.open/write/close to set content
+		expr := fmt.Sprintf(`(function() {
+			document.open();
+			document.write(%s);
+			document.close();
+		})()`, toJSString(params.HTML))
+
+		_, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", map[string]interface{}{
+			"expression":    expr,
+			"returnByValue": true,
+		})
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return json.RawMessage(`{}`), nil
+
+	case "Page.getLayoutMetrics":
+		// Return viewport metrics via Runtime.evaluate.
+		expr := `JSON.stringify({
+			width: window.innerWidth,
+			height: window.innerHeight,
+			devicePixelRatio: window.devicePixelRatio,
+			scrollX: window.scrollX,
+			scrollY: window.scrollY,
+			docWidth: document.documentElement.scrollWidth,
+			docHeight: document.documentElement.scrollHeight
+		})`
+		result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", map[string]interface{}{
+			"expression":    expr,
+			"returnByValue": true,
+		})
+		if err != nil {
+			// Return sensible defaults
+			return marshalResult(map[string]interface{}{
+				"layoutViewport": map[string]interface{}{
+					"pageX":          0,
+					"pageY":          0,
+					"clientWidth":    1280,
+					"clientHeight":   720,
+				},
+				"visualViewport": map[string]interface{}{
+					"offsetX":  0,
+					"offsetY":  0,
+					"pageX":    0,
+					"pageY":    0,
+					"clientWidth":  1280,
+					"clientHeight": 720,
+					"scale":    1,
+					"zoom":     1,
+				},
+				"contentSize": map[string]interface{}{
+					"x":      0,
+					"y":      0,
+					"width":  1280,
+					"height": 720,
+				},
+				"cssLayoutViewport": map[string]interface{}{
+					"clientWidth":  1280,
+					"clientHeight": 720,
+				},
+				"cssVisualViewport": map[string]interface{}{
+					"offsetX": 0,
+					"offsetY": 0,
+					"pageX":   0,
+					"pageY":   0,
+					"clientWidth":  1280,
+					"clientHeight": 720,
+				},
+				"cssContentSize": map[string]interface{}{
+					"x":      0,
+					"y":      0,
+					"width":  1280,
+					"height": 720,
+				},
+			})
+		}
+
+		// Parse the evaluate result
+		var evalResult struct {
+			Result struct {
+				Value json.RawMessage `json:"value"`
+			} `json:"result"`
+		}
+		json.Unmarshal(result, &evalResult)
+
+		var metrics struct {
+			Width     float64 `json:"width"`
+			Height    float64 `json:"height"`
+			DPR       float64 `json:"devicePixelRatio"`
+			ScrollX   float64 `json:"scrollX"`
+			ScrollY   float64 `json:"scrollY"`
+			DocWidth  float64 `json:"docWidth"`
+			DocHeight float64 `json:"docHeight"`
+		}
+		if evalResult.Result.Value != nil {
+			var strVal string
+			if json.Unmarshal(evalResult.Result.Value, &strVal) == nil {
+				json.Unmarshal([]byte(strVal), &metrics)
+			} else {
+				json.Unmarshal(evalResult.Result.Value, &metrics)
+			}
+		}
+		if metrics.Width == 0 {
+			metrics.Width = 1280
+		}
+		if metrics.Height == 0 {
+			metrics.Height = 720
+		}
+		if metrics.DPR == 0 {
+			metrics.DPR = 1
+		}
+
+		return marshalResult(map[string]interface{}{
+			"layoutViewport": map[string]interface{}{
+				"pageX":       metrics.ScrollX,
+				"pageY":       metrics.ScrollY,
+				"clientWidth":  metrics.Width,
+				"clientHeight": metrics.Height,
+			},
+			"visualViewport": map[string]interface{}{
+				"offsetX":      0,
+				"offsetY":      0,
+				"pageX":        metrics.ScrollX,
+				"pageY":        metrics.ScrollY,
+				"clientWidth":  metrics.Width,
+				"clientHeight": metrics.Height,
+				"scale":        1,
+				"zoom":         metrics.DPR,
+			},
+			"contentSize": map[string]interface{}{
+				"x":      0,
+				"y":      0,
+				"width":  metrics.DocWidth,
+				"height": metrics.DocHeight,
+			},
+			"cssLayoutViewport": map[string]interface{}{
+				"clientWidth":  metrics.Width,
+				"clientHeight": metrics.Height,
+			},
+			"cssVisualViewport": map[string]interface{}{
+				"offsetX":      0,
+				"offsetY":      0,
+				"pageX":        metrics.ScrollX,
+				"pageY":        metrics.ScrollY,
+				"clientWidth":  metrics.Width,
+				"clientHeight": metrics.Height,
+			},
+			"cssContentSize": map[string]interface{}{
+				"x":      0,
+				"y":      0,
+				"width":  metrics.DocWidth,
+				"height": metrics.DocHeight,
+			},
+		})
+
+	case "Page.handleJavaScriptDialog":
+		var params struct {
+			Accept     bool   `json:"accept"`
+			PromptText string `json:"promptText"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+
+		jugglerParams := map[string]interface{}{
+			"accept": params.Accept,
+		}
+		if params.PromptText != "" {
+			jugglerParams["promptText"] = params.PromptText
+		}
+
+		_, err := b.callJuggler(msg.SessionID, "Page.handleDialog", jugglerParams)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return json.RawMessage(`{}`), nil
 
 	case "Page.setBypassCSP":
 		return json.RawMessage(`{}`), nil
@@ -191,7 +452,30 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 	case "Page.stopLoading":
 		return json.RawMessage(`{}`), nil
 
+	case "Page.getNavigationHistory":
+		return marshalResult(map[string]interface{}{
+			"currentIndex": 0,
+			"entries": []map[string]interface{}{
+				{
+					"id":             0,
+					"url":            "about:blank",
+					"userTypedURL":   "about:blank",
+					"title":          "",
+					"transitionType": "typed",
+				},
+			},
+		})
+
+	case "Page.navigateToHistoryEntry":
+		return json.RawMessage(`{}`), nil
+
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}
+}
+
+// toJSString converts a Go string to a JavaScript string literal (JSON-encoded).
+func toJSString(s string) string {
+	data, _ := json.Marshal(s)
+	return string(data)
 }

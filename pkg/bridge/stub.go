@@ -24,6 +24,14 @@ var stubDomains = map[string]bool{
 	"CSS":           true,
 	"Overlay":       true,
 	"DOMStorage":    true,
+	"WebAuthn":      true,
+	"Media":         true,
+	"Audits":        true,
+	"Inspector":     true,
+	"Database":      true,
+	"BackgroundService": true,
+	"Cast":          true,
+	"DeviceAccess":  true,
 }
 
 func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {
@@ -42,7 +50,19 @@ func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 				"jsVersion":       "",
 			})
 		}
-		return result, nil
+		// Translate Juggler's Browser.getInfo to CDP's Browser.getVersion format
+		var info struct {
+			Version   string `json:"version"`
+			UserAgent string `json:"userAgent"`
+		}
+		json.Unmarshal(result, &info)
+		return marshalResult(map[string]string{
+			"protocolVersion": "1.3",
+			"product":         fmt.Sprintf("foxbridge (%s)", info.Version),
+			"revision":        "",
+			"userAgent":       info.UserAgent,
+			"jsVersion":       "",
+		})
 	}
 
 	// Browser.close
@@ -52,6 +72,32 @@ func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 		return json.RawMessage(`{}`), nil
+	}
+
+	// Browser.getWindowForTarget — Puppeteer calls this for window management
+	if method == "Browser.getWindowForTarget" {
+		return marshalResult(map[string]interface{}{
+			"windowId": 1,
+			"bounds": map[string]interface{}{
+				"left":        0,
+				"top":         0,
+				"width":       1280,
+				"height":      720,
+				"windowState": "normal",
+			},
+		})
+	}
+
+	// Browser.setWindowBounds
+	if method == "Browser.setWindowBounds" {
+		return json.RawMessage(`{}`), nil
+	}
+
+	// SystemInfo.getProcessInfo — some tools query this
+	if method == "SystemInfo.getProcessInfo" {
+		return marshalResult(map[string]interface{}{
+			"processInfo": []interface{}{},
+		})
 	}
 
 	// Check if the domain is a known stub domain.
@@ -68,84 +114,6 @@ func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 	// Specific method stubs needed for Puppeteer compatibility.
 	switch method {
 	case "Runtime.runIfWaitingForDebugger":
-		return json.RawMessage(`{}`), nil
-	case "Page.getFrameTree":
-		// Return the frame tree with the correct frame ID from session state
-		frameID := "main"
-		return marshalResult(map[string]interface{}{
-			"frameTree": map[string]interface{}{
-				"frame": map[string]interface{}{
-					"id":              frameID,
-					"loaderId":        "",
-					"url":             "about:blank",
-					"domainAndRegistry": "",
-					"securityOrigin":  "",
-					"mimeType":        "text/html",
-					"secureContextType": "InsecureScheme",
-					"crossOriginIsolatedContextType": "NotIsolated",
-					"gatedAPIFeatures": []string{},
-				},
-			},
-		})
-	case "Page.setLifecycleEventsEnabled":
-		return json.RawMessage(`{}`), nil
-	case "Page.addScriptToEvaluateOnNewDocument":
-		return marshalResult(map[string]string{"identifier": "1"})
-	case "Page.createIsolatedWorld":
-		var params struct {
-			FrameID              string `json:"frameId"`
-			WorldName            string `json:"worldName"`
-			GrantUniversalAccess bool   `json:"grantUniveralAccess"`
-		}
-		json.Unmarshal(msg.Params, &params)
-
-		// Generate a unique context ID for the isolated world
-		// Use a high number to avoid collision with main world contexts
-		b.ctxMapMu.Lock()
-		ctxID := 10000 + len(b.ctxMap)
-		// Map to the MAIN world's Juggler context — isolated worlds in Juggler
-		// just use the same execution context, so we find the latest one
-		latestJugglerCtx := ""
-		for _, v := range b.ctxMap {
-			latestJugglerCtx = v
-		}
-		if latestJugglerCtx != "" {
-			b.ctxMap[ctxID] = latestJugglerCtx
-		}
-		b.ctxMapMu.Unlock()
-
-		uniqueID := fmt.Sprintf("isolated-%s-%s", params.FrameID, params.WorldName)
-
-		// Store the mapping for the isolated world too
-		if latestJugglerCtx != "" {
-			b.ctxMapMu.Lock()
-			b.ctxMap[ctxID] = latestJugglerCtx
-			b.ctxMapMu.Unlock()
-		}
-
-		sessionID := msg.SessionID
-
-		// Emit the context event AFTER returning the response
-		go func() {
-			b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
-				"context": map[string]interface{}{
-					"id":       ctxID,
-					"origin":   "",
-					"name":     params.WorldName,
-					"uniqueId": uniqueID,
-					"auxData": map[string]interface{}{
-						"isDefault": false,
-						"type":      "isolated",
-						"frameId":   params.FrameID,
-					},
-				},
-			}, sessionID)
-		}()
-
-		return marshalResult(map[string]interface{}{"executionContextId": ctxID})
-	case "Page.setInterceptFileChooserDialog":
-		return json.RawMessage(`{}`), nil
-	case "Emulation.setDefaultBackgroundColorOverride":
 		return json.RawMessage(`{}`), nil
 	}
 
