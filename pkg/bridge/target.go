@@ -56,19 +56,23 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 				}
 			}
 		} else {
-			// Session-level setAutoAttach (tab or page session).
-			// If this is a tab session, emit the page attachment.
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.Type == "tab" {
-				// Find the page pair for this tab
-				b.autoAttach.mu.Lock()
-				for _, pair := range b.autoAttach.pairs {
-					if pair.tabSessionID == msg.SessionID {
-						b.autoAttach.mu.Unlock()
-						b.emitPageAttach(pair)
-						goto autoAttachDone
+			// Session-level setAutoAttach (tab, page, or worker session).
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				switch info.Type {
+				case "tab":
+					// Tab session: emit the page attachment.
+					b.autoAttach.mu.Lock()
+					for _, pair := range b.autoAttach.pairs {
+						if pair.tabSessionID == msg.SessionID {
+							b.autoAttach.mu.Unlock()
+							b.emitPageAttach(pair)
+							goto autoAttachDone
+						}
 					}
+					b.autoAttach.mu.Unlock()
+				case "worker", "service_worker":
+					// Workers have no children to auto-attach — no-op.
 				}
-				b.autoAttach.mu.Unlock()
 			}
 			// Page-session or no match: no-op
 		}

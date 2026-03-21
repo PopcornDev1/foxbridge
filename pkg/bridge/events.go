@@ -62,6 +62,43 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		targetID := ev.TargetInfo.TargetID
 		jugglerSessionID := ev.SessionID
+		targetType := ev.TargetInfo.Type
+
+		// Workers (worker/service_worker) use a single CDP session — no tab/page dual model.
+		if targetType == "worker" || targetType == "service_worker" {
+			workerSessionID := uuid.New().String()
+			b.sessions.Add(&cdp.SessionInfo{
+				SessionID:        workerSessionID,
+				JugglerSessionID: jugglerSessionID,
+				TargetID:         targetID,
+				BrowserContextID: ev.TargetInfo.BrowserContextID,
+				URL:              ev.TargetInfo.URL,
+				Type:             targetType,
+			})
+
+			log.Printf("[event] registered %s target=%s session=%s", targetType, targetID, workerSessionID)
+
+			b.autoAttach.mu.Lock()
+			autoEnabled := b.autoAttach.enabled
+			b.autoAttach.mu.Unlock()
+
+			if autoEnabled {
+				b.emitEvent("Target.attachedToTarget", map[string]interface{}{
+					"sessionId": workerSessionID,
+					"targetInfo": map[string]interface{}{
+						"targetId":         targetID,
+						"type":             targetType,
+						"title":            "",
+						"url":              ev.TargetInfo.URL,
+						"attached":         true,
+						"canAccessOpener":  false,
+						"browserContextId": ev.TargetInfo.BrowserContextID,
+					},
+					"waitingForDebugger": false,
+				}, "")
+			}
+			return
+		}
 
 		tabSessionID := uuid.New().String()
 		pageSessionID := uuid.New().String()
