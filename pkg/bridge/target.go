@@ -3,6 +3,7 @@ package bridge
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 	"github.com/google/uuid"
@@ -11,8 +12,67 @@ import (
 func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {
 	switch msg.Method {
 	case "Target.setDiscoverTargets":
-		// Browser.enable was already called during foxbridge startup.
-		// Just return success — targets are auto-discovered.
+		// Emit targetCreated for all known targets (both tabs and pages).
+		for _, info := range b.sessions.All() {
+			url := info.URL
+			if url == "" && info.Type == "page" {
+				url = "about:blank"
+			}
+			b.emitEvent("Target.targetCreated", map[string]interface{}{
+				"targetInfo": map[string]interface{}{
+					"targetId":         info.TargetID,
+					"type":             info.Type,
+					"title":            info.Title,
+					"url":              url,
+					"attached":         true,
+					"canAccessOpener":  false,
+					"browserContextId": info.BrowserContextID,
+				},
+			}, "")
+		}
+		return json.RawMessage(`{}`), nil
+
+	case "Target.setAutoAttach":
+		var params struct {
+			AutoAttach             bool `json:"autoAttach"`
+			WaitForDebuggerOnStart bool `json:"waitForDebuggerOnStart"`
+			Flatten                bool `json:"flatten"`
+		}
+		json.Unmarshal(msg.Params, &params)
+
+		if msg.SessionID == "" {
+			// Browser-level setAutoAttach: emit TAB attachedToTarget for all pending targets.
+			// The PAGE attachment happens when Puppeteer sends setAutoAttach on the tab session.
+			b.autoAttach.mu.Lock()
+			b.autoAttach.enabled = params.AutoAttach
+			pending := b.autoAttach.pending
+			b.autoAttach.pending = nil
+			b.autoAttach.mu.Unlock()
+
+			if params.AutoAttach {
+				log.Printf("[target] setAutoAttach on browser session, emitting %d pending tab targets", len(pending))
+				for _, pair := range pending {
+					b.emitTabAttach(pair)
+				}
+			}
+		} else {
+			// Session-level setAutoAttach (tab or page session).
+			// If this is a tab session, emit the page attachment.
+			if info, ok := b.sessions.Get(msg.SessionID); ok && info.Type == "tab" {
+				// Find the page pair for this tab
+				b.autoAttach.mu.Lock()
+				for _, pair := range b.autoAttach.pairs {
+					if pair.tabSessionID == msg.SessionID {
+						b.autoAttach.mu.Unlock()
+						b.emitPageAttach(pair)
+						goto autoAttachDone
+					}
+				}
+				b.autoAttach.mu.Unlock()
+			}
+			// Page-session or no match: no-op
+		}
+	autoAttachDone:
 		return json.RawMessage(`{}`), nil
 
 	case "Target.createTarget":
@@ -34,18 +94,22 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 
-		// Juggler returns { pageId, sessionId }
+		// Juggler returns { targetId }
+		log.Printf("[target] Browser.newPage response: %s", string(result))
 		var pageResult struct {
-			PageID    string `json:"pageId"`
-			SessionID string `json:"sessionId"`
+			TargetID  string `json:"targetId"`
 		}
 		json.Unmarshal(result, &pageResult)
 
-		targetID := pageResult.PageID
+		targetID := pageResult.TargetID
 		if targetID == "" {
 			targetID = uuid.New().String()
 		}
 
+		// Return the PAGE targetId (not the tab).
+		// Puppeteer's waitForTarget matches on this ID, and TAB targets are filtered
+		// out by _isTargetExposed(). The tab attachment happens via the event handler.
+		log.Printf("[target] createTarget returning page targetId=%s", targetID)
 		return marshalResult(map[string]string{"targetId": targetID})
 
 	case "Target.closeTarget":
@@ -61,7 +125,7 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 			return nil, &cdp.Error{Code: -32000, Message: fmt.Sprintf("target %s not found", params.TargetID)}
 		}
 
-		_, err := b.callJuggler(info.JugglerSessionID, "Page.close", nil)
+		_, err := b.callJuggler(info.SessionID, "Page.close", nil)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
@@ -150,20 +214,23 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 
 		return marshalResult(map[string]string{"sessionId": sessionID})
 
-	case "Target.setAutoAttach":
-		// Accepted but no-op; we handle attachment explicitly.
-		return json.RawMessage(`{}`), nil
-
 	case "Target.activateTarget":
 		return json.RawMessage(`{}`), nil
 
 	case "Target.getBrowserContexts":
-		// Return list of browser context IDs — must be an array, never null
 		contexts := b.sessions.GetBrowserContexts()
 		if contexts == nil {
 			contexts = []string{}
 		}
-		return marshalResult(map[string]interface{}{"browserContextIds": contexts})
+		// Puppeteer expects defaultBrowserContextId to be present
+		defaultCtxID := ""
+		if len(contexts) > 0 {
+			defaultCtxID = contexts[0]
+		}
+		return marshalResult(map[string]interface{}{
+			"browserContextIds":      contexts,
+			"defaultBrowserContextId": defaultCtxID,
+		})
 
 	case "Target.getTargetInfo":
 		var params struct {

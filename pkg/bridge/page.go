@@ -3,6 +3,7 @@ package bridge
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 )
@@ -34,6 +35,15 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			jugglerParams["frameId"] = params.FrameID
 		}
 
+		// Use the stored frameId if available, otherwise try to discover it
+		if _, hasFrame := jugglerParams["frameId"]; !hasFrame || jugglerParams["frameId"] == "main" {
+			if info, ok := b.sessions.Get(msg.SessionID); ok && info.FrameID != "" {
+				jugglerParams["frameId"] = info.FrameID
+			}
+		}
+
+		jp, _ := json.Marshal(jugglerParams)
+		log.Printf("[page] navigate: params=%s cdpSession=%s", string(jp), msg.SessionID)
 		result, err := b.callJuggler(msg.SessionID, "Page.navigate", jugglerParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
@@ -113,21 +123,72 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		return marshalResult(map[string]string{"data": ssResult.Data})
 
 	case "Page.getFrameTree":
-		// Return a minimal frame tree.
+		// Look up the real frame ID from the session (stored from events)
+		frameID := ""
+		pageURL := "about:blank"
+		if info, ok := b.sessions.Get(msg.SessionID); ok {
+			frameID = info.FrameID
+			if info.URL != "" {
+				pageURL = info.URL
+			}
+		}
+
+		// If frameID is not yet known, trigger a page reload to generate navigation events
+		// that include the frame ID, or query the page to discover it
+		if frameID == "" {
+			log.Printf("[page] getFrameTree: no frameID, calling Accessibility.getFullAXTree to trigger content process init")
+			// Call a method that goes through the content process, which triggers
+			// execution context events that include the frameId.
+			_, probeErr := b.callJuggler(msg.SessionID, "Accessibility.getFullAXTree", map[string]interface{}{})
+			if probeErr != nil {
+				log.Printf("[page] getFrameTree: AX tree probe failed: %v", probeErr)
+			}
+			// After the call, check if frameId was stored from triggered events
+			if info, ok := b.sessions.Get(msg.SessionID); ok && info.FrameID != "" {
+				frameID = info.FrameID
+				log.Printf("[page] getFrameTree: discovered frameID=%s via AX tree probe", frameID)
+			}
+		}
+
+		// Last resort: if still no frameID, fall back to a placeholder
+		if frameID == "" {
+			frameID = "main"
+			log.Printf("[page] getFrameTree: WARNING no frameId available for session %s, using placeholder", msg.SessionID)
+		}
+
 		return marshalResult(map[string]interface{}{
 			"frameTree": map[string]interface{}{
 				"frame": map[string]interface{}{
-					"id":             "main",
-					"loaderId":       "",
-					"url":            "",
-					"securityOrigin": "",
-					"mimeType":       "text/html",
+					"id":                frameID,
+					"loaderId":          "",
+					"url":               pageURL,
+					"securityOrigin":    "",
+					"mimeType":          "text/html",
+					"domainAndRegistry": "",
+					"secureContextType": "InsecureScheme",
+					"crossOriginIsolatedContextType": "NotIsolated",
+					"gatedAPIFeatures": []string{},
 				},
 				"childFrames": []interface{}{},
 			},
 		})
 
 	case "Page.setInterceptFileChooserDialog":
+		return json.RawMessage(`{}`), nil
+
+	case "Page.addScriptToEvaluateOnNewDocument":
+		return marshalResult(map[string]string{"identifier": "1"})
+
+	case "Page.createIsolatedWorld":
+		return marshalResult(map[string]interface{}{"executionContextId": 1})
+
+	case "Page.setBypassCSP":
+		return json.RawMessage(`{}`), nil
+
+	case "Page.bringToFront":
+		return json.RawMessage(`{}`), nil
+
+	case "Page.stopLoading":
 		return json.RawMessage(`{}`), nil
 
 	default:

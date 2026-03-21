@@ -97,10 +97,6 @@ func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		return json.RawMessage(`{}`), nil
 	case "Emulation.setDefaultBackgroundColorOverride":
 		return json.RawMessage(`{}`), nil
-	case "Target.setAutoAttach":
-		return json.RawMessage(`{}`), nil
-	case "Target.setDiscoverTargets":
-		return json.RawMessage(`{}`), nil
 	}
 
 	return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", method)}

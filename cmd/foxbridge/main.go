@@ -38,16 +38,7 @@ func main() {
 	// 2. Get the Juggler backend.
 	backend := proc.Client()
 
-	// 3. Enable Browser domain with attachToDefaultContext.
-	enableParams, _ := json.Marshal(map[string]interface{}{
-		"attachToDefaultContext": true,
-	})
-	_, err = backend.Call("", "Browser.enable", enableParams)
-	if err != nil {
-		log.Fatalf("failed to enable Browser domain: %v", err)
-	}
-
-	// 4. Create CDP session manager and server.
+	// 3. Create CDP session manager and server.
 	sessions := cdp.NewSessionManager()
 
 	var b *bridge.Bridge
@@ -55,9 +46,20 @@ func main() {
 		b.HandleMessage(conn, msg)
 	})
 
-	// 5. Create bridge and set up Juggler → CDP event subscriptions.
+	// 4. Create bridge and set up Juggler → CDP event subscriptions BEFORE enabling Browser.
+	// This ensures attachedToTarget for the initial tab is captured.
 	b = bridge.New(backend, sessions, server)
 	b.SetupEventSubscriptions()
+
+	// 5. Enable Browser domain with attachToDefaultContext.
+	// This triggers Browser.attachedToTarget for the initial about:blank page.
+	enableParams, _ := json.Marshal(map[string]interface{}{
+		"attachToDefaultContext": true,
+	})
+	_, err = backend.Call("", "Browser.enable", enableParams)
+	if err != nil {
+		log.Fatalf("failed to enable Browser domain: %v", err)
+	}
 
 	// 6. Start server in background.
 	go func() {

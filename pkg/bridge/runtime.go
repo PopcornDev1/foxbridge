@@ -27,9 +27,24 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
+		// Juggler requires executionContextId — use uniqueContextId from CDP
+		// (which is the Juggler execution context ID we sent in Runtime.executionContextCreated)
+		execCtxID := params.UniqueContextID
+		if execCtxID == "" {
+			// Try to find it from the session's stored frame info
+			jugglerSessionID := b.resolveSession(msg.SessionID)
+			if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok && info.FrameID != "" {
+				// Use the frame ID as context lookup — but Juggler just needs any valid executionContextId
+				// The simplest approach: find it by trying the evaluate without one first
+			}
+		}
+
 		jugglerParams := map[string]interface{}{
 			"expression":    params.Expression,
 			"returnByValue": params.ReturnByValue,
+		}
+		if execCtxID != "" {
+			jugglerParams["executionContextId"] = execCtxID
 		}
 		if params.AwaitPromise {
 			jugglerParams["awaitPromise"] = true
@@ -40,6 +55,9 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 
+		// Translate Juggler result format to CDP format
+		// Juggler: {result: {type, value, ...}, exceptionDetails: {...}}
+		// CDP:     {result: {type, value, description, ...}, exceptionDetails: {...}}
 		return result, nil
 
 	case "Runtime.callFunctionOn":
@@ -49,6 +67,8 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			Arguments           json.RawMessage `json:"arguments"`
 			ReturnByValue       bool            `json:"returnByValue"`
 			AwaitPromise        bool            `json:"awaitPromise"`
+			ExecutionContextID  int             `json:"executionContextId"`
+			UniqueContextID     string          `json:"uniqueContextId"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
@@ -66,6 +86,10 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		}
 		if params.AwaitPromise {
 			jugglerParams["awaitPromise"] = true
+		}
+		// Map execution context
+		if params.UniqueContextID != "" {
+			jugglerParams["executionContextId"] = params.UniqueContextID
 		}
 
 		result, err := b.callJuggler(msg.SessionID, "Runtime.callFunction", jugglerParams)

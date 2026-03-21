@@ -11,17 +11,19 @@ import (
 
 // Bridge translates CDP messages to Juggler protocol calls.
 type Bridge struct {
-	backend  backend.Backend
-	sessions *cdp.SessionManager
-	server   *cdp.Server
+	backend    backend.Backend
+	sessions   *cdp.SessionManager
+	server     *cdp.Server
+	autoAttach *autoAttachState
 }
 
 // New creates a new Bridge.
 func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *Bridge {
 	return &Bridge{
-		backend:  b,
-		sessions: sessions,
-		server:   server,
+		backend:    b,
+		sessions:   sessions,
+		server:     server,
+		autoAttach: newAutoAttachState(),
 	}
 }
 

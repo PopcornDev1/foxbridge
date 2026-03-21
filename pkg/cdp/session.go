@@ -11,6 +11,7 @@ type SessionInfo struct {
 	URL              string
 	Title            string
 	Type             string // "page", "background_page", etc.
+	FrameID          string // Main frame ID from Juggler (e.g., "mainframe-3")
 }
 
 // SessionManager tracks CDP sessions and their mappings to Juggler sessions.

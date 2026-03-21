@@ -192,6 +192,9 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 	case "Emulation.setScrollbarsHidden":
 		return json.RawMessage(`{}`), nil
 
+	case "Emulation.setDefaultBackgroundColorOverride":
+		return json.RawMessage(`{}`), nil
+
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}

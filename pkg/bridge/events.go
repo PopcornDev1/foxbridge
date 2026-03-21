@@ -2,20 +2,52 @@ package bridge
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
+	"sync"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 	"github.com/google/uuid"
 )
 
+// targetPair holds the tab+page CDP session IDs for a Juggler target.
+type targetPair struct {
+	tabSessionID  string
+	tabTargetID   string
+	pageSessionID string
+	pageTargetID  string
+	browserCtxID  string
+	url           string
+}
+
+// autoAttachState tracks auto-attach configuration and pending targets.
+type autoAttachState struct {
+	mu      sync.Mutex
+	enabled bool
+	// targets that arrived before setAutoAttach — need retroactive emission
+	pending []*targetPair
+	// all known pairs for lookup
+	pairs map[string]*targetPair // keyed by juggler session ID
+	// pendingFrameIDs stores frameIDs from executionContextCreated events that
+	// fired before the CDP session was registered (keyed by Juggler session ID)
+	pendingFrameIDs map[string]string
+}
+
+func newAutoAttachState() *autoAttachState {
+	return &autoAttachState{
+		pairs:           make(map[string]*targetPair),
+		pendingFrameIDs: make(map[string]string),
+	}
+}
+
 // SetupEventSubscriptions subscribes to Juggler events and translates them to CDP events.
 func (b *Bridge) SetupEventSubscriptions() {
 	// Browser.attachedToTarget — new page created, register session and emit CDP events.
 	b.backend.Subscribe("Browser.attachedToTarget", func(sessionID string, params json.RawMessage) {
-		log.Printf("[event] Browser.attachedToTarget received (len=%d)", len(params))
+		log.Printf("[event] Browser.attachedToTarget received: %s", string(params))
 		var ev struct {
-			SessionID        string `json:"sessionId"`
-			TargetInfo       struct {
+			SessionID  string `json:"sessionId"`
+			TargetInfo struct {
 				TargetID         string `json:"targetId"`
 				BrowserContextID string `json:"browserContextId"`
 				Type             string `json:"type"`
@@ -30,90 +62,61 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		targetID := ev.TargetInfo.TargetID
 		jugglerSessionID := ev.SessionID
-		targetType := ev.TargetInfo.Type
-		if targetType == "" {
-			targetType = "page"
-		}
 
-		// Chrome uses a two-level session: tab → page.
-		// Puppeteer expects: attachedToTarget(type=tab) on browser session,
-		// then attachedToTarget(type=page) on the tab session.
 		tabSessionID := uuid.New().String()
 		pageSessionID := uuid.New().String()
 		tabTargetID := uuid.New().String()
 
+		pair := &targetPair{
+			tabSessionID:  tabSessionID,
+			tabTargetID:   tabTargetID,
+			pageSessionID: pageSessionID,
+			pageTargetID:  targetID,
+			browserCtxID:  ev.TargetInfo.BrowserContextID,
+			url:           ev.TargetInfo.URL,
+		}
+
 		// Register the PAGE session (what actually talks to Juggler)
-		b.sessions.Add(&cdp.SessionInfo{
+		pageInfo := &cdp.SessionInfo{
 			SessionID:        pageSessionID,
 			JugglerSessionID: jugglerSessionID,
 			TargetID:         targetID,
 			BrowserContextID: ev.TargetInfo.BrowserContextID,
 			URL:              ev.TargetInfo.URL,
 			Type:             "page",
-		})
-		// Register the TAB session (stub — routes to same Juggler session)
+		}
+		// Apply any pending frameID that was buffered before session registration
+		b.autoAttach.mu.Lock()
+		if pendingFrameID, ok := b.autoAttach.pendingFrameIDs[jugglerSessionID]; ok {
+			pageInfo.FrameID = pendingFrameID
+			delete(b.autoAttach.pendingFrameIDs, jugglerSessionID)
+			log.Printf("[event] applied buffered frameID=%s to new session %s", pendingFrameID, pageSessionID)
+		}
+		b.autoAttach.mu.Unlock()
+		b.sessions.Add(pageInfo)
+		// Register the TAB session (stub — doesn't map to Juggler session to avoid
+		// overwriting the PAGE session in jugglerSessions lookup)
 		b.sessions.Add(&cdp.SessionInfo{
 			SessionID:        tabSessionID,
-			JugglerSessionID: jugglerSessionID,
+			JugglerSessionID: "tab:" + jugglerSessionID,
 			TargetID:         tabTargetID,
 			BrowserContextID: ev.TargetInfo.BrowserContextID,
 			URL:              ev.TargetInfo.URL,
 			Type:             "tab",
 		})
 
-		// Step 1: Emit tab target created + attached on browser session
-		b.emitEvent("Target.targetCreated", map[string]interface{}{
-			"targetInfo": map[string]interface{}{
-				"targetId":         tabTargetID,
-				"type":             "tab",
-				"title":            "",
-				"url":              ev.TargetInfo.URL,
-				"attached":         true,
-				"canAccessOpener":  false,
-				"browserContextId": ev.TargetInfo.BrowserContextID,
-			},
-		}, "")
-
-		b.emitEvent("Target.attachedToTarget", map[string]interface{}{
-			"sessionId": tabSessionID,
-			"targetInfo": map[string]interface{}{
-				"targetId":         tabTargetID,
-				"type":             "tab",
-				"title":            "",
-				"url":              ev.TargetInfo.URL,
-				"attached":         true,
-				"canAccessOpener":  false,
-				"browserContextId": ev.TargetInfo.BrowserContextID,
-			},
-			"waitingForDebugger": true,
-		}, "")
-
-		// Step 2: Emit page target created + attached on the TAB session
-		b.emitEvent("Target.targetCreated", map[string]interface{}{
-			"targetInfo": map[string]interface{}{
-				"targetId":         targetID,
-				"type":             "page",
-				"title":            "",
-				"url":              ev.TargetInfo.URL,
-				"attached":         true,
-				"canAccessOpener":  false,
-				"browserContextId": ev.TargetInfo.BrowserContextID,
-			},
-		}, tabSessionID)
-
-		b.emitEvent("Target.attachedToTarget", map[string]interface{}{
-			"sessionId": pageSessionID,
-			"targetInfo": map[string]interface{}{
-				"targetId":         targetID,
-				"type":             "page",
-				"title":            "",
-				"url":              ev.TargetInfo.URL,
-				"attached":         true,
-				"canAccessOpener":  false,
-				"browserContextId": ev.TargetInfo.BrowserContextID,
-			},
-			"waitingForDebugger": true,
-		}, tabSessionID)
+		b.autoAttach.mu.Lock()
+		b.autoAttach.pairs[jugglerSessionID] = pair
+		if b.autoAttach.enabled {
+			// Auto-attach is active — emit TAB attachment immediately.
+			// PAGE attachment will be emitted when Puppeteer sends setAutoAttach on the tab session.
+			b.autoAttach.mu.Unlock()
+			b.emitTabAttach(pair)
+		} else {
+			// Auto-attach not yet active — queue for later
+			b.autoAttach.pending = append(b.autoAttach.pending, pair)
+			b.autoAttach.mu.Unlock()
+		}
 	})
 
 	// Browser.detachedFromTarget — page destroyed.
@@ -140,27 +143,57 @@ func (b *Bridge) SetupEventSubscriptions() {
 			cdpSessionID = info.SessionID
 		}
 
-		// Emit Target.targetDestroyed
-		b.emitEvent("Target.targetDestroyed", map[string]interface{}{
-			"targetId": targetID,
-		}, "")
+		// Also find and clean up the tab session
+		b.autoAttach.mu.Lock()
+		if pair, exists := b.autoAttach.pairs[ev.SessionID]; exists {
+			// Emit destroy for both tab and page
+			b.autoAttach.mu.Unlock()
 
-		// Emit Target.detachedFromTarget
-		if cdpSessionID != "" {
-			b.emitEvent("Target.detachedFromTarget", map[string]interface{}{
-				"sessionId": cdpSessionID,
-				"targetId":  targetID,
+			b.emitEvent("Target.targetDestroyed", map[string]interface{}{
+				"targetId": pair.pageTargetID,
 			}, "")
-			b.sessions.Remove(cdpSessionID)
+			b.emitEvent("Target.targetDestroyed", map[string]interface{}{
+				"targetId": pair.tabTargetID,
+			}, "")
+
+			if cdpSessionID != "" {
+				b.emitEvent("Target.detachedFromTarget", map[string]interface{}{
+					"sessionId": cdpSessionID,
+					"targetId":  targetID,
+				}, "")
+			}
+
+			b.sessions.Remove(pair.pageSessionID)
+			b.sessions.Remove(pair.tabSessionID)
+
+			b.autoAttach.mu.Lock()
+			delete(b.autoAttach.pairs, ev.SessionID)
+			b.autoAttach.mu.Unlock()
+		} else {
+			b.autoAttach.mu.Unlock()
+
+			b.emitEvent("Target.targetDestroyed", map[string]interface{}{
+				"targetId": targetID,
+			}, "")
+
+			if cdpSessionID != "" {
+				b.emitEvent("Target.detachedFromTarget", map[string]interface{}{
+					"sessionId": cdpSessionID,
+					"targetId":  targetID,
+				}, "")
+				b.sessions.Remove(cdpSessionID)
+			}
 		}
 	})
 
 	// Page.navigationCommitted → Page.frameNavigated (session-scoped)
+	var navCounter int
 	b.backend.Subscribe("Page.navigationCommitted", func(jugglerSessionID string, params json.RawMessage) {
 		var ev struct {
-			FrameID string `json:"frameId"`
-			URL     string `json:"url"`
-			Name    string `json:"name"`
+			FrameID      string `json:"frameId"`
+			URL          string `json:"url"`
+			Name         string `json:"name"`
+			NavigationID string `json:"navigationId"`
 		}
 		if err := json.Unmarshal(params, &ev); err != nil {
 			log.Printf("events: failed to parse Page.navigationCommitted: %v", err)
@@ -174,13 +207,28 @@ func (b *Bridge) SetupEventSubscriptions() {
 			info.URL = ev.URL
 		}
 
+		// Generate a loaderId from the navigation
+		navCounter++
+		loaderId := ev.NavigationID
+		if loaderId == "" {
+			loaderId = fmt.Sprintf("loader-%d", navCounter)
+		}
+
+		// Emit lifecycle "init" event to signal new document navigation to Puppeteer
+		b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
+			"frameId":   ev.FrameID,
+			"loaderId":  loaderId,
+			"name":      "init",
+			"timestamp": 0,
+		}, cdpSessionID)
+
 		b.emitEvent("Page.frameNavigated", map[string]interface{}{
 			"frame": map[string]interface{}{
-				"id":             ev.FrameID,
-				"url":            ev.URL,
-				"loaderId":       "",
-				"securityOrigin": "",
-				"mimeType":       "text/html",
+				"id":                ev.FrameID,
+				"url":               ev.URL,
+				"loaderId":          loaderId,
+				"securityOrigin":    "",
+				"mimeType":          "text/html",
 				"domainAndRegistry": "",
 			},
 			"type": "Navigation",
@@ -190,8 +238,8 @@ func (b *Bridge) SetupEventSubscriptions() {
 	// Page.eventFired — maps to Page.loadEventFired or Page.domContentEventFired
 	b.backend.Subscribe("Page.eventFired", func(jugglerSessionID string, params json.RawMessage) {
 		var ev struct {
-			Name    string  `json:"name"`
-			FrameID string  `json:"frameId"`
+			Name    string `json:"name"`
+			FrameID string `json:"frameId"`
 		}
 		if err := json.Unmarshal(params, &ev); err != nil {
 			log.Printf("events: failed to parse Page.eventFired: %v", err)
@@ -200,21 +248,34 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 
+		// Use loaderId from the navigation counter
+		loaderId := fmt.Sprintf("loader-%d", navCounter)
+
 		switch ev.Name {
 		case "load":
 			b.emitEvent("Page.loadEventFired", map[string]interface{}{
+				"timestamp": 0,
+			}, cdpSessionID)
+			b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
+				"frameId":   ev.FrameID,
+				"loaderId":  loaderId,
+				"name":      "load",
 				"timestamp": 0,
 			}, cdpSessionID)
 		case "DOMContentLoaded":
 			b.emitEvent("Page.domContentEventFired", map[string]interface{}{
 				"timestamp": 0,
 			}, cdpSessionID)
+			b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
+				"frameId":   ev.FrameID,
+				"loaderId":  loaderId,
+				"name":      "DOMContentLoaded",
+				"timestamp": 0,
+			}, cdpSessionID)
 		}
 	})
 
 	// Runtime.executionContextCreated → Runtime.executionContextCreated
-	// Juggler: {executionContextId, auxData: {frameId, name}}
-	// CDP:     {context: {id, origin, name, uniqueId, auxData: {isDefault, type, frameId}}}
 	var ctxCounter int
 	b.backend.Subscribe("Runtime.executionContextCreated", func(jugglerSessionID string, params json.RawMessage) {
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
@@ -228,6 +289,22 @@ func (b *Bridge) SetupEventSubscriptions() {
 			} `json:"auxData"`
 		}
 		json.Unmarshal(params, &ev)
+
+		// Store frame ID if not already set
+		if ev.AuxData.FrameID != "" {
+			if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok && info.FrameID == "" {
+				info.FrameID = ev.AuxData.FrameID
+				log.Printf("[event] stored frameID=%s for juggler session %s", ev.AuxData.FrameID, jugglerSessionID)
+			} else if !ok {
+				// Session not registered yet — buffer the frameId for later
+				b.autoAttach.mu.Lock()
+				if _, exists := b.autoAttach.pendingFrameIDs[jugglerSessionID]; !exists {
+					b.autoAttach.pendingFrameIDs[jugglerSessionID] = ev.AuxData.FrameID
+					log.Printf("[event] buffered pending frameID=%s for juggler session %s", ev.AuxData.FrameID, jugglerSessionID)
+				}
+				b.autoAttach.mu.Unlock()
+			}
+		}
 
 		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
 			"context": map[string]interface{}{
@@ -245,8 +322,6 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 
 	// Runtime.executionContextDestroyed → Runtime.executionContextDestroyed
-	// Juggler: {executionContextId}
-	// CDP:     {executionContextId, executionContextUniqueId}
 	b.backend.Subscribe("Runtime.executionContextDestroyed", func(jugglerSessionID string, params json.RawMessage) {
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 		var ev struct {
@@ -255,8 +330,8 @@ func (b *Bridge) SetupEventSubscriptions() {
 		json.Unmarshal(params, &ev)
 
 		b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
-			"executionContextId":         ctxCounter, // use last known
-			"executionContextUniqueId":   ev.ExecutionContextID,
+			"executionContextId":       ctxCounter, // use last known
+			"executionContextUniqueId": ev.ExecutionContextID,
 		}, cdpSessionID)
 	})
 
@@ -274,10 +349,10 @@ func (b *Bridge) SetupEventSubscriptions() {
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 
 		b.emitEvent("Runtime.consoleAPICalled", map[string]interface{}{
-			"type":            ev.Type,
-			"args":            ev.Args,
+			"type":               ev.Type,
+			"args":               ev.Args,
 			"executionContextId": 0,
-			"timestamp":       0,
+			"timestamp":          0,
 		}, cdpSessionID)
 	})
 
@@ -290,6 +365,13 @@ func (b *Bridge) SetupEventSubscriptions() {
 		if err := json.Unmarshal(params, &ev); err != nil {
 			log.Printf("events: failed to parse Page.frameAttached: %v", err)
 			return
+		}
+
+		// Store the main frame ID (parentFrameId is empty for the main frame)
+		if ev.ParentFrameID == "" && ev.FrameID != "" {
+			if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
+				info.FrameID = ev.FrameID
+			}
 		}
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
@@ -319,11 +401,59 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 }
 
+// emitTabAttach emits ONLY the tab-level attachment on the browser session.
+// The page-level attachment is deferred until Puppeteer sends setAutoAttach on the tab session.
+func (b *Bridge) emitTabAttach(pair *targetPair) {
+	b.emitEvent("Target.attachedToTarget", map[string]interface{}{
+		"sessionId": pair.tabSessionID,
+		"targetInfo": map[string]interface{}{
+			"targetId":         pair.tabTargetID,
+			"type":             "tab",
+			"title":            "",
+			"url":              pair.url,
+			"attached":         true,
+			"canAccessOpener":  false,
+			"browserContextId": pair.browserCtxID,
+		},
+		"waitingForDebugger": true,
+	}, "")
+}
+
+// emitPageAttach emits the page-level attachment on a tab session.
+func (b *Bridge) emitPageAttach(pair *targetPair) {
+	url := pair.url
+	if url == "" {
+		url = "about:blank"
+	}
+	b.emitEvent("Target.attachedToTarget", map[string]interface{}{
+		"sessionId": pair.pageSessionID,
+		"targetInfo": map[string]interface{}{
+			"targetId":         pair.pageTargetID,
+			"type":             "page",
+			"title":            "",
+			"url":              url,
+			"attached":         true,
+			"canAccessOpener":  false,
+			"browserContextId": pair.browserCtxID,
+		},
+		"waitingForDebugger": true,
+	}, pair.tabSessionID)
+}
+
 // resolveCDPSession maps a Juggler sessionID to a CDP sessionID.
+// For page-level events, we want the PAGE session (not the tab).
 func (b *Bridge) resolveCDPSession(jugglerSessionID string) string {
 	if jugglerSessionID == "" {
 		return ""
 	}
+	// Look up the pair to get the page session ID
+	b.autoAttach.mu.Lock()
+	pair, ok := b.autoAttach.pairs[jugglerSessionID]
+	b.autoAttach.mu.Unlock()
+	if ok {
+		return pair.pageSessionID
+	}
+	// Fallback to session manager
 	if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
 		return info.SessionID
 	}
