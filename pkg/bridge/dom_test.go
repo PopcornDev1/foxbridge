@@ -377,3 +377,252 @@ func TestHandleDOM_UnknownMethod(t *testing.T) {
 		t.Errorf("error code = %d, want -32601", cdpErr.Code)
 	}
 }
+
+func TestHandleDOM_Focus(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Runtime.callFunction", json.RawMessage(`{"result":{}}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.focus",
+		Params: json.RawMessage(`{"objectId":"node-5"}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+
+	calls := mb.CallsForMethod("Runtime.callFunction")
+	if len(calls) == 0 {
+		t.Fatal("expected Runtime.callFunction call")
+	}
+	var params map[string]interface{}
+	json.Unmarshal(calls[0].Params, &params)
+	if params["objectId"] != "node-5" {
+		t.Errorf("objectId = %v, want node-5", params["objectId"])
+	}
+	decl, _ := params["functionDeclaration"].(string)
+	if decl == "" {
+		t.Error("functionDeclaration should not be empty")
+	}
+}
+
+func TestHandleDOM_Focus_NoObjectID(t *testing.T) {
+	b, mb := newTestBridge()
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.focus",
+		Params: json.RawMessage(`{"nodeId":3}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+
+	// Should NOT call Runtime.callFunction without objectId
+	calls := mb.CallsForMethod("Runtime.callFunction")
+	if len(calls) != 0 {
+		t.Errorf("expected no Runtime.callFunction call without objectId, got %d", len(calls))
+	}
+}
+
+func TestHandleDOM_GetOuterHTML_WithObjectID(t *testing.T) {
+	b, mb := newTestBridge()
+	evalResult := `{"result":{"value":"<div>hello</div>"}}`
+	mb.SetResponse("", "Runtime.callFunction", json.RawMessage(evalResult), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.getOuterHTML",
+		Params: json.RawMessage(`{"objectId":"node-10"}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+
+	var res struct {
+		OuterHTML string `json:"outerHTML"`
+	}
+	json.Unmarshal(result, &res)
+	if res.OuterHTML != "<div>hello</div>" {
+		t.Errorf("outerHTML = %q, want <div>hello</div>", res.OuterHTML)
+	}
+
+	calls := mb.CallsForMethod("Runtime.callFunction")
+	if len(calls) == 0 {
+		t.Fatal("expected Runtime.callFunction call")
+	}
+	var params map[string]interface{}
+	json.Unmarshal(calls[0].Params, &params)
+	if params["objectId"] != "node-10" {
+		t.Errorf("objectId = %v, want node-10", params["objectId"])
+	}
+}
+
+func TestHandleDOM_GetOuterHTML_NoObjectID(t *testing.T) {
+	b, _ := newTestBridge()
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.getOuterHTML",
+		Params: json.RawMessage(`{"nodeId":1}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+
+	var res struct {
+		OuterHTML string `json:"outerHTML"`
+	}
+	json.Unmarshal(result, &res)
+	if res.OuterHTML != "" {
+		t.Errorf("outerHTML = %q, want empty string for fallback", res.OuterHTML)
+	}
+}
+
+func TestHandleDOM_ScrollIntoViewIfNeeded(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Runtime.callFunction", json.RawMessage(`{"result":{}}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.scrollIntoViewIfNeeded",
+		Params: json.RawMessage(`{"objectId":"node-7"}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+
+	calls := mb.CallsForMethod("Runtime.callFunction")
+	if len(calls) == 0 {
+		t.Fatal("expected Runtime.callFunction call")
+	}
+	var params map[string]interface{}
+	json.Unmarshal(calls[0].Params, &params)
+	if params["objectId"] != "node-7" {
+		t.Errorf("objectId = %v, want node-7", params["objectId"])
+	}
+}
+
+func TestHandleDOM_ScrollIntoViewIfNeeded_NoObjectID(t *testing.T) {
+	b, mb := newTestBridge()
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.scrollIntoViewIfNeeded",
+		Params: json.RawMessage(`{"nodeId":3}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+
+	calls := mb.CallsForMethod("Runtime.callFunction")
+	if len(calls) != 0 {
+		t.Errorf("expected no Runtime.callFunction call without objectId, got %d", len(calls))
+	}
+}
+
+func TestHandleDOM_SetFileInputFiles(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.setFileInputFiles", json.RawMessage(`{}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.setFileInputFiles",
+		Params: json.RawMessage(`{"files":["/tmp/a.txt","/tmp/b.txt"],"objectId":"node-12"}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+
+	calls := mb.CallsForMethod("Page.setFileInputFiles")
+	if len(calls) == 0 {
+		t.Fatal("expected Page.setFileInputFiles call")
+	}
+	var params map[string]interface{}
+	json.Unmarshal(calls[0].Params, &params)
+	if params["objectId"] != "node-12" {
+		t.Errorf("objectId = %v, want node-12", params["objectId"])
+	}
+	files, ok := params["files"].([]interface{})
+	if !ok {
+		t.Fatal("files not found in params")
+	}
+	if len(files) != 2 {
+		t.Fatalf("files len = %d, want 2", len(files))
+	}
+	if files[0] != "/tmp/a.txt" {
+		t.Errorf("files[0] = %v, want /tmp/a.txt", files[0])
+	}
+}
+
+func TestHandleDOM_SetFileInputFiles_NoObjectID(t *testing.T) {
+	b, mb := newTestBridge()
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.setFileInputFiles",
+		Params: json.RawMessage(`{"files":["/tmp/a.txt"],"nodeId":5}`),
+	}
+
+	result, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+
+	// Without objectId, should not call Page.setFileInputFiles
+	calls := mb.CallsForMethod("Page.setFileInputFiles")
+	if len(calls) != 0 {
+		t.Errorf("expected no Page.setFileInputFiles call without objectId, got %d", len(calls))
+	}
+}
+
+func TestHandleDOM_SetFileInputFiles_Error(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.setFileInputFiles", nil, fmt.Errorf("file input failed"))
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "DOM.setFileInputFiles",
+		Params: json.RawMessage(`{"files":["/tmp/a.txt"],"objectId":"node-1"}`),
+	}
+
+	_, cdpErr := b.handleDOM(nil, msg)
+	if cdpErr == nil {
+		t.Fatal("expected error when Page.setFileInputFiles fails")
+	}
+	if cdpErr.Code != -32000 {
+		t.Errorf("error code = %d, want -32000", cdpErr.Code)
+	}
+}
