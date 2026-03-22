@@ -135,7 +135,7 @@ func TestHandleInput_DispatchKeyEvent(t *testing.T) {
 			name:   "keyDown with all fields",
 			params: `{"type":"keyDown","key":"a","code":"KeyA","text":"a","keyIdentifier":"U+0041","modifiers":2,"windowsVirtualKeyCode":65}`,
 			checks: map[string]interface{}{
-				"type":    "keyDown",
+				"type":    "keydown",
 				"key":     "a",
 				"code":    "KeyA",
 				"text":    "a",
@@ -146,7 +146,7 @@ func TestHandleInput_DispatchKeyEvent(t *testing.T) {
 			name:   "keyUp minimal",
 			params: `{"type":"keyUp","key":"Enter"}`,
 			checks: map[string]interface{}{
-				"type": "keyUp",
+				"type": "keyup",
 				"key":  "Enter",
 			},
 		},

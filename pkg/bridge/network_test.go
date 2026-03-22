@@ -179,14 +179,10 @@ func TestNetworkGetCookies_WithURLs(t *testing.T) {
 
 	var params map[string]interface{}
 	json.Unmarshal(last.Params, &params)
-	urls, ok := params["urls"].([]interface{})
-	if !ok {
-		t.Fatalf("urls not an array: %T", params["urls"])
+	// Juggler's getCookies doesn't support urls — verify it's not sent
+	if _, hasURLs := params["urls"]; hasURLs {
+		t.Error("urls should not be sent to Juggler")
 	}
-	if len(urls) != 1 || urls[0] != "https://example.com" {
-		t.Errorf("urls = %v, want [https://example.com]", urls)
-	}
-
 	// Result should pass through from backend
 	if result == nil {
 		t.Fatal("expected non-nil result")

@@ -3,6 +3,8 @@ package bridge
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 )
@@ -52,6 +54,7 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		return json.RawMessage(`{}`), nil
 
 	case "Input.dispatchKeyEvent":
+		log.Printf("[input] dispatchKeyEvent params: %s", string(msg.Params)[:min(len(msg.Params), 300)])
 		var params struct {
 			Type                  string `json:"type"`
 			Key                   string `json:"key"`
@@ -67,8 +70,11 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
+		// CDP uses camelCase (keyDown/keyUp), Juggler uses lowercase (keydown/keyup)
+		keyType := strings.ToLower(params.Type)
+
 		jugglerParams := map[string]interface{}{
-			"type":     params.Type,
+			"type":     keyType,
 			"key":      params.Key,
 			"code":     params.Code,
 			"keyCode":  params.WindowsVirtualKeyCode,
@@ -85,8 +91,11 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			jugglerParams["code"] = ""
 		}
 
+		jpData, _ := json.Marshal(jugglerParams)
+		log.Printf("[input] Juggler key params: %s", string(jpData))
 		_, err := b.callJuggler(msg.SessionID, "Page.dispatchKeyEvent", jugglerParams)
 		if err != nil {
+			log.Printf("[input] dispatchKeyEvent error: %v", err)
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 		return json.RawMessage(`{}`), nil

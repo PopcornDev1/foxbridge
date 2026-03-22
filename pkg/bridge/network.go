@@ -51,10 +51,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			json.Unmarshal(msg.Params, &params)
 		}
 
+		// Juggler's getCookies only accepts browserContextId — no URLs filter
 		jugglerParams := map[string]interface{}{}
-		if len(params.URLs) > 0 {
-			jugglerParams["urls"] = params.URLs
-		}
 		if msg.SessionID != "" {
 			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
 				jugglerParams["browserContextId"] = info.BrowserContextID
