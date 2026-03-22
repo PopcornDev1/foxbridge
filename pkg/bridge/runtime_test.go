@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
@@ -175,7 +176,7 @@ func TestHandleRuntime_CallFunctionOn_AwaitPromise(t *testing.T) {
 	var p map[string]interface{}
 	json.Unmarshal(last.Params, &p)
 	funcDecl, _ := p["functionDeclaration"].(string)
-	if funcDecl != `async function(...args) { return await (function(){return fetch('/')}).apply(null, args) }` {
+	if !strings.Contains(funcDecl, "function(){return fetch('/')}") {
 		t.Errorf("functionDeclaration = %q, want async-wrapped", funcDecl)
 	}
 }

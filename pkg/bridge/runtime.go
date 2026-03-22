@@ -211,7 +211,33 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 					b.lastQueryAll[msg.SessionID] = isAll
 					b.lastQueryMu.Unlock()
 
-					// Return a dummy element handle — the actual selector will be used in the combined call
+					if isAll {
+						// For querySelectorAll, execute immediately with the combined evaluate
+						// because Puppeteer tries to iterate the result before calling the user function.
+						// We skip the deferred pattern and handle it in one shot.
+						b.lastQueryMu.Lock()
+						delete(b.lastQuery, msg.SessionID)
+						delete(b.lastQueryAll, msg.SessionID)
+						b.lastQueryMu.Unlock()
+
+						// Return a real NodeList reference via evaluate
+						expr := fmt.Sprintf(`document.querySelectorAll(%q)`, selectorArg.Value)
+						evalP := map[string]interface{}{
+							"expression":    expr,
+							"returnByValue": false,
+						}
+						if latest := b.latestContextForSession(msg.SessionID); latest != "" {
+							evalP["executionContextId"] = latest
+						}
+						result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", evalP)
+						if err != nil {
+							return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+						}
+						return result, nil
+					}
+
+					// For querySelector ($eval), return a dummy handle — the actual selector
+					// will be used in the combined call when the user function arrives.
 					return marshalResult(map[string]interface{}{
 						"result": map[string]interface{}{
 							"type":    "object",

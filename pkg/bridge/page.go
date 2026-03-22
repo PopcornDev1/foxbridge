@@ -158,13 +158,13 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			json.Unmarshal(msg.Params, &params)
 		}
 
-		jugglerParams := map[string]interface{}{}
-		if params.Format != "" {
-			mimeType := "image/png"
-			if params.Format == "jpeg" || params.Format == "jpg" {
-				mimeType = "image/jpeg"
-			}
-			jugglerParams["mimeType"] = mimeType
+		// Juggler requires mimeType — default to png
+		mimeType := "image/png"
+		if params.Format == "jpeg" || params.Format == "jpg" {
+			mimeType = "image/jpeg"
+		}
+		jugglerParams := map[string]interface{}{
+			"mimeType": mimeType,
 		}
 		if params.Clip != nil {
 			jugglerParams["clip"] = map[string]interface{}{
