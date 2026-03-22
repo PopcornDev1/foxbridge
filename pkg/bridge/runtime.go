@@ -4,9 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 )
+
+func mustMarshal(v interface{}) json.RawMessage {
+	data, _ := json.Marshal(v)
+	return data
+}
 
 func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {
 	switch msg.Method {
@@ -139,8 +145,33 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			}
 		}
 
-		// If awaitPromise, wrap the function to await its result
 		funcDecl := params.FunctionDeclaration
+
+		// Intercept Puppeteer's cssQuerySelector pattern and replace with direct querySelector.
+		// Puppeteer sends: (element, selector, {cssQuerySelector}) => cssQuerySelector(element, selector)
+		// The helper objectId becomes stale after navigation. Replace with native querySelector.
+		if strings.Contains(funcDecl, "cssQuerySelector") && params.Arguments != nil {
+			var args []json.RawMessage
+			if json.Unmarshal(params.Arguments, &args) == nil && len(args) >= 2 {
+				var selectorArg struct {
+					Value string `json:"value"`
+				}
+				json.Unmarshal(args[1], &selectorArg)
+				if selectorArg.Value != "" {
+					log.Printf("[runtime] intercepting cssQuerySelector for %q", selectorArg.Value)
+					if strings.Contains(funcDecl, "cssQuerySelectorAll") {
+						funcDecl = fmt.Sprintf(`function(element) { return element.querySelectorAll(%q); }`, selectorArg.Value)
+					} else {
+						funcDecl = fmt.Sprintf(`function(element) { return element.querySelector(%q); }`, selectorArg.Value)
+					}
+					// Only keep the element arg, drop selector and stale helper
+					params.Arguments = mustMarshal([]interface{}{json.RawMessage(args[0])})
+					params.AwaitPromise = false // direct querySelector doesn't return a promise
+				}
+			}
+		}
+
+		// If awaitPromise, wrap the function to await its result
 		if params.AwaitPromise {
 			funcDecl = fmt.Sprintf(`async function(...args) { return await (%s).apply(this, args) }`, funcDecl)
 		}
@@ -167,9 +198,21 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		// Rewrite any argument objectIds that look like they're from a stale/isolated context
 		// by NOT changing them — Juggler objects are valid as long as the context exists.
 		if params.ObjectID != "" {
-			jugglerParams["objectId"] = params.ObjectID
-		}
-		if params.Arguments != nil {
+			// Juggler's callFunction doesn't support objectId as `this` binding.
+			// Prepend objectId as the first argument and wrap the function to use it as `this`.
+			var existingArgs []json.RawMessage
+			if params.Arguments != nil {
+				json.Unmarshal(params.Arguments, &existingArgs)
+			}
+			newArgs := make([]json.RawMessage, 0, len(existingArgs)+1)
+			objArg, _ := json.Marshal(map[string]string{"objectId": params.ObjectID})
+			newArgs = append(newArgs, objArg)
+			newArgs = append(newArgs, existingArgs...)
+			jugglerParams["args"] = newArgs
+
+			// Wrap: pass the object as first arg. Use .call for regular functions, direct arg for arrow functions.
+			funcDecl = fmt.Sprintf(`function(__this__, ...args) { const fn = %s; if (fn.prototype) { return fn.call(__this__, ...args); } else { return fn(__this__, ...args); } }`, funcDecl)
+		} else if params.Arguments != nil {
 			jugglerParams["args"] = params.Arguments
 		}
 
