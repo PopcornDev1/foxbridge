@@ -106,6 +106,7 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		return result, nil
 
 	case "Runtime.callFunctionOn":
+		log.Printf("[runtime] callFunctionOn params: %s", string(msg.Params)[:min(len(msg.Params), 500)])
 		var params struct {
 			FunctionDeclaration string          `json:"functionDeclaration"`
 			ObjectID            string          `json:"objectId"`
@@ -149,7 +150,33 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			"functionDeclaration": funcDecl,
 			"returnByValue":      params.ReturnByValue,
 		}
-		if execCtxID != "" {
+
+		// Check if arguments contain object references (objectId).
+		// If so, execute in the context that owns those objects, not the specified context.
+		// This handles cross-world calls like $eval where Puppeteer passes objects from
+		// the main world to the isolated world.
+		hasObjectArgs := false
+		if params.Arguments != nil {
+			var args []map[string]interface{}
+			if json.Unmarshal(params.Arguments, &args) == nil {
+				for _, arg := range args {
+					if _, ok := arg["objectId"]; ok {
+						hasObjectArgs = true
+						break
+					}
+				}
+			}
+		}
+
+		if hasObjectArgs {
+			// Use the LATEST (main world) context — object args live there
+			latest := b.latestContextForSession(msg.SessionID)
+			if latest != "" {
+				jugglerParams["executionContextId"] = latest
+			} else if execCtxID != "" {
+				jugglerParams["executionContextId"] = execCtxID
+			}
+		} else if execCtxID != "" {
 			jugglerParams["executionContextId"] = execCtxID
 		}
 		if params.ObjectID != "" {

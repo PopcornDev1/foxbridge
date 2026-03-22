@@ -281,8 +281,54 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 			json.Unmarshal(msg.Params, &params)
 		}
 
-		// Return a stub remote object. In practice, Puppeteer uses Runtime.evaluate
-		// to get element references, which works through our existing path.
+		// Resolve to a real Juggler object by evaluating document/documentElement.
+		// We evaluate WITHOUT returnByValue to get an objectId reference.
+		expr := "document"
+		if params.NodeID == 2 || params.BackendNodeID == 2 {
+			expr = "document.documentElement"
+		}
+
+		// Try to evaluate in the latest context
+		execCtx := b.latestContextForSession(msg.SessionID)
+		evalParams := map[string]interface{}{
+			"expression":    expr,
+			"returnByValue": false,
+		}
+		if execCtx != "" {
+			evalParams["executionContextId"] = execCtx
+		}
+		result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", evalParams)
+		if err != nil {
+			// Fallback to fake objectId
+			return marshalResult(map[string]interface{}{
+				"object": map[string]interface{}{
+					"type":     "object",
+					"subtype":  "node",
+					"objectId": fmt.Sprintf("node-%d", params.NodeID),
+				},
+			})
+		}
+
+		// Extract the objectId from the evaluate result
+		var evalResult struct {
+			Result struct {
+				ObjectID string `json:"objectId"`
+				Type     string `json:"type"`
+			} `json:"result"`
+		}
+		json.Unmarshal(result, &evalResult)
+
+		if evalResult.Result.ObjectID != "" {
+			return marshalResult(map[string]interface{}{
+				"object": map[string]interface{}{
+					"type":     evalResult.Result.Type,
+					"subtype":  "node",
+					"objectId": evalResult.Result.ObjectID,
+				},
+			})
+		}
+
+		// Fallback
 		return marshalResult(map[string]interface{}{
 			"object": map[string]interface{}{
 				"type":     "object",
