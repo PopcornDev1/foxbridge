@@ -3,6 +3,7 @@ package bridge
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 )
@@ -195,7 +196,8 @@ func TestHandleTarget_CloseTarget(t *testing.T) {
 		t.Errorf("success = %v, want true", res["success"])
 	}
 
-	// Session should be removed
+	// Session removal is async — wait briefly
+	time.Sleep(50 * time.Millisecond)
 	if _, ok := b.sessions.Get("s1"); ok {
 		t.Error("session s1 should have been removed")
 	}

@@ -129,11 +129,47 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 			return nil, &cdp.Error{Code: -32000, Message: fmt.Sprintf("target %s not found", params.TargetID)}
 		}
 
-		_, err := b.callJuggler(info.SessionID, "Page.close", nil)
+		sessionID := info.SessionID
+		targetID := info.TargetID
+
+		_, err := b.callJuggler(sessionID, "Page.close", nil)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
-		b.sessions.Remove(info.SessionID)
+
+		// Proactively emit Target.detachedFromTarget + targetDestroyed.
+		// Juggler's Page.close does NOT emit Browser.detachedFromTarget,
+		// so Puppeteer would hang forever waiting for it.
+		go func() {
+			b.autoAttach.mu.Lock()
+			for jSID, pair := range b.autoAttach.pairs {
+				if pair.pageTargetID == targetID || pair.tabTargetID == targetID {
+					b.autoAttach.mu.Unlock()
+					// Emit detachedFromTarget on the tab session (Chrome does this)
+					b.emitEvent("Target.detachedFromTarget", map[string]interface{}{
+						"sessionId": pair.pageSessionID, "targetId": pair.pageTargetID,
+					}, pair.tabSessionID)
+					// Also emit on browser session
+					b.emitEvent("Target.detachedFromTarget", map[string]interface{}{
+						"sessionId": pair.tabSessionID, "targetId": pair.tabTargetID,
+					}, "")
+					b.emitEvent("Target.targetDestroyed", map[string]interface{}{"targetId": pair.pageTargetID}, "")
+					b.emitEvent("Target.targetDestroyed", map[string]interface{}{"targetId": pair.tabTargetID}, "")
+					b.sessions.Remove(pair.pageSessionID)
+					b.sessions.Remove(pair.tabSessionID)
+					b.autoAttach.mu.Lock()
+					delete(b.autoAttach.pairs, jSID)
+					b.autoAttach.mu.Unlock()
+					return
+				}
+			}
+			b.autoAttach.mu.Unlock()
+			b.emitEvent("Target.detachedFromTarget", map[string]interface{}{
+				"sessionId": sessionID, "targetId": targetID,
+			}, "")
+			b.emitEvent("Target.targetDestroyed", map[string]interface{}{"targetId": targetID}, "")
+			b.sessions.Remove(sessionID)
+		}()
 
 		return json.RawMessage(`{"success":true}`), nil
 

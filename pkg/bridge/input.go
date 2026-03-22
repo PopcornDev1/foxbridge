@@ -68,22 +68,21 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		}
 
 		jugglerParams := map[string]interface{}{
-			"type": params.Type,
-		}
-		if params.Key != "" {
-			jugglerParams["key"] = params.Key
-		}
-		if params.Code != "" {
-			jugglerParams["code"] = params.Code
+			"type":     params.Type,
+			"key":      params.Key,
+			"code":     params.Code,
+			"keyCode":  params.WindowsVirtualKeyCode,
+			"location": 0,
+			"repeat":   false,
 		}
 		if params.Text != "" {
 			jugglerParams["text"] = params.Text
 		}
-		if params.KeyIdentifier != "" {
-			jugglerParams["keyIdentifier"] = params.KeyIdentifier
+		if params.Key == "" {
+			jugglerParams["key"] = ""
 		}
-		if params.Modifiers > 0 {
-			jugglerParams["modifiers"] = params.Modifiers
+		if params.Code == "" {
+			jugglerParams["code"] = ""
 		}
 
 		_, err := b.callJuggler(msg.SessionID, "Page.dispatchKeyEvent", jugglerParams)

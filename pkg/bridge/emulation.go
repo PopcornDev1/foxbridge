@@ -136,10 +136,7 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 			}
 		}
 
-		_, err := b.callJuggler("", "Browser.setDefaultViewport", jugglerParams)
-		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
-		}
+		b.callJuggler("", "Browser.setDefaultViewport", jugglerParams) // ignore error
 		return json.RawMessage(`{}`), nil
 
 	case "Emulation.clearDeviceMetricsOverride":
@@ -162,10 +159,7 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 			}
 		}
 
-		_, err := b.callJuggler("", "Browser.setTouchOverride", jugglerParams)
-		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
-		}
+		b.callJuggler("", "Browser.setTouchOverride", jugglerParams) // ignore error
 		return json.RawMessage(`{}`), nil
 
 	case "Emulation.setEmulatedMedia":

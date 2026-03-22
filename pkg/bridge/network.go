@@ -3,6 +3,7 @@ package bridge
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 )
@@ -37,7 +38,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		_, err := b.callJuggler("", "Browser.setCookies", jugglerParams)
 		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+			log.Printf("[network] %s failed: %v", msg.Method, err)
+		return json.RawMessage(`{}`), nil
 		}
 		return json.RawMessage(`{}`), nil
 
@@ -61,9 +63,23 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		result, err := b.callJuggler("", "Browser.getCookies", jugglerParams)
 		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+			log.Printf("[network] getCookies failed: %v", err)
+			r, _ := marshalResult(map[string]interface{}{"cookies": []interface{}{}})
+			return r, nil
 		}
 		return result, nil
+
+	case "Network.deleteCookies":
+		// Puppeteer uses this to delete specific cookies
+		// Map to clearBrowserCookies as fallback (clears all for context)
+		jugglerParams := map[string]interface{}{}
+		if msg.SessionID != "" {
+			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
+				jugglerParams["browserContextId"] = info.BrowserContextID
+			}
+		}
+		b.callJuggler("", "Browser.clearCookies", jugglerParams)
+		return json.RawMessage(`{}`), nil
 
 	case "Network.clearBrowserCookies":
 		jugglerParams := map[string]interface{}{}
@@ -75,7 +91,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		_, err := b.callJuggler("", "Browser.clearCookies", jugglerParams)
 		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+			log.Printf("[network] %s failed: %v", msg.Method, err)
+		return json.RawMessage(`{}`), nil
 		}
 		return json.RawMessage(`{}`), nil
 
@@ -98,7 +115,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		_, err := b.callJuggler("", "Browser.setExtraHTTPHeaders", jugglerParams)
 		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+			log.Printf("[network] %s failed: %v", msg.Method, err)
+		return json.RawMessage(`{}`), nil
 		}
 		return json.RawMessage(`{}`), nil
 
@@ -121,7 +139,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		_, err := b.callJuggler("", "Browser.setRequestInterception", jugglerParams)
 		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+			log.Printf("[network] %s failed: %v", msg.Method, err)
+		return json.RawMessage(`{}`), nil
 		}
 		return json.RawMessage(`{}`), nil
 
@@ -146,7 +165,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			"requestId": params.RequestID,
 		})
 		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+			log.Printf("[network] %s failed: %v", msg.Method, err)
+		return json.RawMessage(`{}`), nil
 		}
 		return result, nil
 

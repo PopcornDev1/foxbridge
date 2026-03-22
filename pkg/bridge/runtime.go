@@ -163,7 +163,11 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		pendingAll := b.lastQueryAll[msg.SessionID]
 		b.lastQueryMu.RUnlock()
 
-		if pendingSelector != "" && !strings.Contains(funcDecl, "cssQuerySelector") {
+		isPuppeteerInternal := strings.Contains(funcDecl, "addPageBinding") ||
+			strings.Contains(funcDecl, "puppeteer_") ||
+			strings.Contains(funcDecl, "__ariaQuery")
+
+		if pendingSelector != "" && !strings.Contains(funcDecl, "cssQuerySelector") && !isPuppeteerInternal {
 			// For $$eval, Puppeteer sends 2 internal plumbing calls (iterator + collector)
 			// before the user function. Skip them by counting.
 			b.lastQueryMu.RLock()
@@ -229,14 +233,32 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 					b.lastQueryAll[msg.SessionID] = isAll
 					b.lastQueryMu.Unlock()
 
-					// Set skip count: $$eval has 3 plumbing calls to skip
-					// (iterator + collector + element mapper), $eval has 0
-					skips := 0
 					if isAll {
-						skips = 3
+						// For $$eval, return a REAL empty array from evaluate
+						// so Puppeteer can iterate it without crashing
+						b.lastQueryMu.Lock()
+						delete(b.lastQuery, msg.SessionID)
+						delete(b.lastQueryAll, msg.SessionID)
+						b.lastQueryMu.Unlock()
+
+						evalP := map[string]interface{}{
+							"expression":    "[]",
+							"returnByValue": false,
+						}
+						if latest := b.latestContextForSession(msg.SessionID); latest != "" {
+							evalP["executionContextId"] = latest
+						}
+						result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", evalP)
+						if err != nil {
+							return marshalResult(map[string]interface{}{
+								"result": map[string]interface{}{"type": "object"},
+							})
+						}
+						return result, nil
 					}
+
 					b.lastQueryMu.Lock()
-					b.lastQuerySkips[msg.SessionID] = skips
+					b.lastQuerySkips[msg.SessionID] = 0
 					b.lastQueryMu.Unlock()
 
 					return marshalResult(map[string]interface{}{
@@ -319,30 +341,22 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
+		// Skip releasing dummy/empty object IDs (from our $eval interception)
+		if params.ObjectID == "" {
+			return json.RawMessage(`{}`), nil
+		}
+
 		disposeParams := map[string]interface{}{
 			"objectId": params.ObjectID,
 		}
 		if latest := b.latestContextForSession(msg.SessionID); latest != "" {
 			disposeParams["executionContextId"] = latest
 		}
-		_, err := b.callJuggler(msg.SessionID, "Runtime.disposeObject", disposeParams)
-		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
-		}
+		// Gracefully handle dispose errors — the object may already be gone
+		b.callJuggler(msg.SessionID, "Runtime.disposeObject", disposeParams)
 		return json.RawMessage(`{}`), nil
 
 	case "Runtime.getProperties":
-		// If there's a pending $$eval, return empty properties — the real query
-		// will be done in the combined evaluate when the user function arrives.
-		b.lastQueryMu.RLock()
-		hasPending := b.lastQuery[msg.SessionID] != ""
-		b.lastQueryMu.RUnlock()
-		if hasPending {
-			return marshalResult(map[string]interface{}{
-				"result": []interface{}{},
-			})
-		}
-
 		var params struct {
 			ObjectID                 string `json:"objectId"`
 			OwnProperties            bool   `json:"ownProperties"`
@@ -352,6 +366,10 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
+		}
+
+		if params.ObjectID == "" {
+			return marshalResult(map[string]interface{}{"result": []interface{}{}})
 		}
 
 		getPropsParams := map[string]interface{}{

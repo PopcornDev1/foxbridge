@@ -134,10 +134,34 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		return json.RawMessage(`{}`), nil
 
 	case "Page.close":
+		// Clean up any pending $eval state for this session
+		b.lastQueryMu.Lock()
+		delete(b.lastQuery, msg.SessionID)
+		delete(b.lastQueryAll, msg.SessionID)
+		delete(b.lastQuerySkips, msg.SessionID)
+		b.lastQueryMu.Unlock()
+
+		// Get target info before closing
+		targetID := ""
+		if info, ok := b.sessions.Get(msg.SessionID); ok {
+			targetID = info.TargetID
+		}
+
 		_, err := b.callJuggler(msg.SessionID, "Page.close", nil)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
+
+		// Proactively emit Target.targetDestroyed — Juggler may not always emit
+		// Browser.detachedFromTarget for Page.close, causing Puppeteer to hang.
+		if targetID != "" {
+			go func() {
+				b.emitEvent("Target.targetDestroyed", map[string]interface{}{
+					"targetId": targetID,
+				}, "")
+			}()
+		}
+
 		return json.RawMessage(`{}`), nil
 
 	case "Page.captureScreenshot":
