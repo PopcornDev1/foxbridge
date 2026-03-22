@@ -34,9 +34,10 @@ type Bridge struct {
 	nodeObjects   map[int]string // backendNodeId → objectId
 	// lastQuerySelector tracks the last intercepted CSS selector per session
 	// so we can combine querySelector + userFn into a single evaluate for $eval
-	lastQueryMu    sync.RWMutex
-	lastQuery      map[string]string // cdpSessionID → CSS selector
-	lastQueryAll   map[string]bool   // cdpSessionID → true if querySelectorAll
+	lastQueryMu      sync.RWMutex
+	lastQuery        map[string]string // cdpSessionID → CSS selector
+	lastQueryAll     map[string]bool   // cdpSessionID → true if querySelectorAll
+	lastQuerySkips   map[string]int    // cdpSessionID → remaining calls to skip before user fn
 }
 
 // New creates a new Bridge.
@@ -54,6 +55,7 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *B
 		nodeObjects:    make(map[int]string),
 		lastQuery:      make(map[string]string),
 		lastQueryAll:   make(map[string]bool),
+		lastQuerySkips: make(map[string]int),
 	}
 }
 

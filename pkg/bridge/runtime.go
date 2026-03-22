@@ -164,13 +164,31 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		b.lastQueryMu.RUnlock()
 
 		if pendingSelector != "" && !strings.Contains(funcDecl, "cssQuerySelector") {
-			// This is the user's function for $eval — combine with the stored selector
+			// For $$eval, Puppeteer sends 2 internal plumbing calls (iterator + collector)
+			// before the user function. Skip them by counting.
+			b.lastQueryMu.RLock()
+			skipsRemaining := b.lastQuerySkips[msg.SessionID]
+			b.lastQueryMu.RUnlock()
+
+			if skipsRemaining > 0 {
+				b.lastQueryMu.Lock()
+				b.lastQuerySkips[msg.SessionID]--
+				b.lastQueryMu.Unlock()
+				log.Printf("[runtime] skipping $$eval plumbing call (%d remaining)", skipsRemaining-1)
+				return marshalResult(map[string]interface{}{
+					"result": map[string]interface{}{
+						"type": "object",
+					},
+				})
+			}
+
+			// This is the user's function — combine with the stored selector
 			b.lastQueryMu.Lock()
 			delete(b.lastQuery, msg.SessionID)
 			delete(b.lastQueryAll, msg.SessionID)
 			b.lastQueryMu.Unlock()
 
-			log.Printf("[runtime] combining $eval: selector=%q fn=%s", pendingSelector, funcDecl[:min(len(funcDecl), 60)])
+			log.Printf("[runtime] combining $eval: selector=%q all=%v fn=%s", pendingSelector, pendingAll, funcDecl[:min(len(funcDecl), 60)])
 
 			var expr string
 			if pendingAll {
@@ -211,33 +229,16 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 					b.lastQueryAll[msg.SessionID] = isAll
 					b.lastQueryMu.Unlock()
 
+					// Set skip count: $$eval has 3 plumbing calls to skip
+					// (iterator + collector + element mapper), $eval has 0
+					skips := 0
 					if isAll {
-						// For querySelectorAll, execute immediately with the combined evaluate
-						// because Puppeteer tries to iterate the result before calling the user function.
-						// We skip the deferred pattern and handle it in one shot.
-						b.lastQueryMu.Lock()
-						delete(b.lastQuery, msg.SessionID)
-						delete(b.lastQueryAll, msg.SessionID)
-						b.lastQueryMu.Unlock()
-
-						// Return a real NodeList reference via evaluate
-						expr := fmt.Sprintf(`document.querySelectorAll(%q)`, selectorArg.Value)
-						evalP := map[string]interface{}{
-							"expression":    expr,
-							"returnByValue": false,
-						}
-						if latest := b.latestContextForSession(msg.SessionID); latest != "" {
-							evalP["executionContextId"] = latest
-						}
-						result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", evalP)
-						if err != nil {
-							return nil, &cdp.Error{Code: -32000, Message: err.Error()}
-						}
-						return result, nil
+						skips = 3
 					}
+					b.lastQueryMu.Lock()
+					b.lastQuerySkips[msg.SessionID] = skips
+					b.lastQueryMu.Unlock()
 
-					// For querySelector ($eval), return a dummy handle — the actual selector
-					// will be used in the combined call when the user function arrives.
 					return marshalResult(map[string]interface{}{
 						"result": map[string]interface{}{
 							"type":    "object",
@@ -312,6 +313,17 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		return json.RawMessage(`{}`), nil
 
 	case "Runtime.getProperties":
+		// If there's a pending $$eval, return empty properties — the real query
+		// will be done in the combined evaluate when the user function arrives.
+		b.lastQueryMu.RLock()
+		hasPending := b.lastQuery[msg.SessionID] != ""
+		b.lastQueryMu.RUnlock()
+		if hasPending {
+			return marshalResult(map[string]interface{}{
+				"result": []interface{}{},
+			})
+		}
+
 		var params struct {
 			ObjectID                 string `json:"objectId"`
 			OwnProperties            bool   `json:"ownProperties"`
