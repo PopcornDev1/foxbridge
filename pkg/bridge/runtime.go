@@ -70,6 +70,12 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			b.ctxMapMu.RUnlock()
 		}
 
+		// Always prefer the latest context to avoid stale context errors after navigation
+		latest := b.latestContextForSession(msg.SessionID)
+		if latest != "" {
+			execCtxID = latest
+		}
+
 		// If awaitPromise is requested, wrap the expression so the promise is resolved
 		// before returning. Juggler's Runtime.evaluate doesn't support awaitPromise natively.
 		expression := params.Expression
@@ -121,6 +127,15 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 				execCtxID = mapped
 			}
 			b.ctxMapMu.RUnlock()
+		}
+
+		// If we have a context ID but no objectId, always use the LATEST context
+		// to avoid stale context errors after navigation
+		if params.ObjectID == "" {
+			latest := b.latestContextForSession(msg.SessionID)
+			if latest != "" {
+				execCtxID = latest
+			}
 		}
 
 		// If awaitPromise, wrap the function to await its result

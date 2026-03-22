@@ -56,16 +56,81 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		}
 		json.Unmarshal(result, &navResult)
 
+		log.Printf("[page] navigate response: navigationId=%s frameId=%s raw=%s",
+			navResult.NavigationID, navResult.FrameID, string(result)[:min(len(result), 200)])
+
 		return marshalResult(map[string]interface{}{
 			"frameId":  navResult.FrameID,
 			"loaderId": navResult.NavigationID,
 		})
 
 	case "Page.reload":
-		_, err := b.callJuggler(msg.SessionID, "Page.reload", nil)
+		// Get frame ID for lifecycle events
+		frameID := ""
+		pageURL := ""
+		if info, ok := b.sessions.Get(msg.SessionID); ok {
+			frameID = info.FrameID
+			pageURL = info.URL
+		}
+
+		jugglerParams := map[string]interface{}{}
+		if msg.Params != nil {
+			var params struct {
+				IgnoreCache bool `json:"ignoreCache"`
+			}
+			json.Unmarshal(msg.Params, &params)
+			if params.IgnoreCache {
+				jugglerParams["ignoreCache"] = true
+			}
+		}
+
+		_, err := b.callJuggler(msg.SessionID, "Page.reload", jugglerParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
+
+		// Juggler doesn't emit navigation lifecycle events for reload.
+		// Puppeteer expects them, so we emit them ourselves.
+		if frameID != "" {
+			loaderId := fmt.Sprintf("reload-%d", b.nextCtxID())
+
+			// Store for eventFired consistency
+			b.loaderMapMu.Lock()
+			b.loaderMap[msg.SessionID] = loaderId
+			b.loaderMapMu.Unlock()
+
+			go func() {
+				b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
+					"frameId": frameID, "loaderId": loaderId, "name": "init", "timestamp": 0,
+				}, msg.SessionID)
+				b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
+					"frameId": frameID, "loaderId": loaderId, "name": "commit", "timestamp": 0,
+				}, msg.SessionID)
+				b.emitEvent("Page.frameNavigated", map[string]interface{}{
+					"frame": map[string]interface{}{
+						"id": frameID, "url": pageURL, "loaderId": loaderId,
+						"securityOrigin": "", "mimeType": "text/html", "domainAndRegistry": "",
+					},
+					"type": "Navigation",
+				}, msg.SessionID)
+				b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
+					"frameId": frameID, "loaderId": loaderId, "name": "DOMContentLoaded", "timestamp": 0,
+				}, msg.SessionID)
+				b.emitEvent("Page.domContentEventFired", map[string]interface{}{
+					"timestamp": 0,
+				}, msg.SessionID)
+				b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
+					"frameId": frameID, "loaderId": loaderId, "name": "load", "timestamp": 0,
+				}, msg.SessionID)
+				b.emitEvent("Page.loadEventFired", map[string]interface{}{
+					"timestamp": 0,
+				}, msg.SessionID)
+				b.emitEvent("Page.frameStoppedLoading", map[string]interface{}{
+					"frameId": frameID,
+				}, msg.SessionID)
+			}()
+		}
+
 		return json.RawMessage(`{}`), nil
 
 	case "Page.close":

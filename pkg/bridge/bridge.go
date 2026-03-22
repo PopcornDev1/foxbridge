@@ -23,6 +23,9 @@ type Bridge struct {
 	// loaderMap tracks the last loaderId per CDP session for lifecycle event consistency
 	loaderMapMu sync.RWMutex
 	loaderMap   map[string]string // cdpSessionID → last loaderId
+	// latestCtx tracks the most recent Juggler execution context per session
+	latestCtxMu sync.RWMutex
+	latestCtx   map[string]string // jugglerSessionID → latest executionContextId
 }
 
 // New creates a new Bridge.
@@ -35,6 +38,7 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *B
 		ctxMap:     make(map[int]string),
 		ctxCounter: 100,
 		loaderMap:  make(map[string]string),
+		latestCtx:  make(map[string]string),
 	}
 }
 
@@ -120,6 +124,14 @@ func (b *Bridge) nextCtxID() int {
 	id := b.ctxCounter
 	b.ctxMapMu.Unlock()
 	return id
+}
+
+// latestContextForSession returns the most recent Juggler execution context for a CDP session.
+func (b *Bridge) latestContextForSession(cdpSessionID string) string {
+	jugglerSessionID := b.resolveSession(cdpSessionID)
+	b.latestCtxMu.RLock()
+	defer b.latestCtxMu.RUnlock()
+	return b.latestCtx[jugglerSessionID]
 }
 
 // emitEvent sends a CDP event to all connected clients.

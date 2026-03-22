@@ -238,6 +238,15 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 
+		// Skip intermediate about:blank navigations during reload/redirect.
+		// Juggler emits navigation to about:blank before navigating to the real URL.
+		// Chrome doesn't do this, and the extra loaderId confuses Puppeteer.
+		if ev.URL == "about:blank" {
+			if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok && info.URL != "" && info.URL != "about:blank" {
+				return // skip — this is an intermediate about:blank during reload
+			}
+		}
+
 		// Update session URL
 		if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
 			info.URL = ev.URL
@@ -377,6 +386,11 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.ctxMapMu.Lock()
 		b.ctxMap[ctxID] = ev.ExecutionContextID
 		b.ctxMapMu.Unlock()
+
+		// Track the latest context for this session (used for stale context fallback)
+		b.latestCtxMu.Lock()
+		b.latestCtx[jugglerSessionID] = ev.ExecutionContextID
+		b.latestCtxMu.Unlock()
 
 		b.emitEvent("Runtime.executionContextCreated", map[string]interface{}{
 			"context": map[string]interface{}{
