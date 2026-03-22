@@ -224,7 +224,6 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 
 	// Page.navigationCommitted → Page.frameNavigated (session-scoped)
-	var navCounter int
 	b.backend.Subscribe("Page.navigationCommitted", func(jugglerSessionID string, params json.RawMessage) {
 		var ev struct {
 			FrameID      string `json:"frameId"`
@@ -239,19 +238,23 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 
-		// Update session URL if this is the main frame.
+		// Update session URL
 		if info, ok := b.sessions.GetByJugglerSession(jugglerSessionID); ok {
 			info.URL = ev.URL
 		}
 
-		// Generate a loaderId from the navigation
-		navCounter++
+		// Use the Juggler navigationId as loaderId for consistency
 		loaderId := ev.NavigationID
 		if loaderId == "" {
-			loaderId = fmt.Sprintf("loader-%d", navCounter)
+			loaderId = fmt.Sprintf("loader-%s", jugglerSessionID[:8])
 		}
 
-		// Emit lifecycle events in Chrome's order: init → commit → frameNavigated
+		// Store loaderId so Page.eventFired can use the same one
+		b.loaderMapMu.Lock()
+		b.loaderMap[cdpSessionID] = loaderId
+		b.loaderMapMu.Unlock()
+
+		// Emit lifecycle events in Chrome's order
 		b.emitEvent("Page.lifecycleEvent", map[string]interface{}{
 			"frameId":   ev.FrameID,
 			"loaderId":  loaderId,
@@ -291,8 +294,13 @@ func (b *Bridge) SetupEventSubscriptions() {
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 
-		// Use loaderId from the navigation counter
-		loaderId := fmt.Sprintf("loader-%d", navCounter)
+		// Use the same loaderId as the navigation that triggered this event
+		b.loaderMapMu.RLock()
+		loaderId := b.loaderMap[cdpSessionID]
+		b.loaderMapMu.RUnlock()
+		if loaderId == "" {
+			loaderId = "loader-unknown"
+		}
 
 		switch ev.Name {
 		case "load":
@@ -322,9 +330,15 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 
 	// Runtime.executionContextsCleared → Runtime.executionContextsCleared
+	// Also clear the ctxMap since all old context IDs are now stale
 	b.backend.Subscribe("Runtime.executionContextsCleared", func(jugglerSessionID string, params json.RawMessage) {
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 		if cdpSessionID != "" {
+			// Clear stale context mappings
+			b.ctxMapMu.Lock()
+			b.ctxMap = make(map[int]string)
+			b.ctxMapMu.Unlock()
+
 			b.emitEvent("Runtime.executionContextsCleared", map[string]interface{}{}, cdpSessionID)
 		}
 	})

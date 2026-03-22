@@ -20,6 +20,9 @@ type Bridge struct {
 	ctxMapMu   sync.RWMutex
 	ctxMap     map[int]string // cdpContextID → jugglerContextID
 	ctxCounter int            // monotonic counter for execution context IDs
+	// loaderMap tracks the last loaderId per CDP session for lifecycle event consistency
+	loaderMapMu sync.RWMutex
+	loaderMap   map[string]string // cdpSessionID → last loaderId
 }
 
 // New creates a new Bridge.
@@ -30,7 +33,8 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server) *B
 		server:     server,
 		autoAttach: newAutoAttachState(),
 		ctxMap:     make(map[int]string),
-		ctxCounter: 100, // start high to avoid collision with early contexts
+		ctxCounter: 100,
+		loaderMap:  make(map[string]string),
 	}
 }
 
