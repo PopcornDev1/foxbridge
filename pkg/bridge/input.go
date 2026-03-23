@@ -59,6 +59,20 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		jugglerParams["button"] = buttonNum
 		jugglerParams["clickCount"] = params.ClickCount
 		jugglerParams["modifiers"] = params.Modifiers
+		// Juggler requires "buttons" (bitmask of pressed buttons) for all mouse events
+		// button 0=left→buttons 1, button 1=middle→buttons 4, button 2=right→buttons 2
+		buttons := 0
+		if mouseType == "mousedown" {
+			switch buttonNum {
+			case 0:
+				buttons = 1
+			case 1:
+				buttons = 4
+			case 2:
+				buttons = 2
+			}
+		}
+		jugglerParams["buttons"] = buttons
 		if params.DeltaX != 0 {
 			jugglerParams["deltaX"] = params.DeltaX
 		}
