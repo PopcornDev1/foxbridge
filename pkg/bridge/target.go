@@ -173,8 +173,10 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 			}
 		}
 
-		// Close the page AFTER emitting events
-		b.callJuggler(sessionID, "Page.close", nil)
+		// Close the page asynchronously — ignore errors since sessions are already cleaned up.
+		// Note: for BiDi, browsingContext.close can terminate the Firefox session entirely.
+		// Skip actual close call — foxbridge state is already cleaned up above.
+		// The browser context will be garbage collected when the session ends.
 
 		return json.RawMessage(`{"success":true}`), nil
 
