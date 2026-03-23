@@ -132,24 +132,20 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 		sessionID := info.SessionID
 		targetID := info.TargetID
 
-		_, err := b.callJuggler(sessionID, "Page.close", nil)
-		if err != nil {
-			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
-		}
-
-		// Proactively emit Target.detachedFromTarget + targetDestroyed.
-		// Juggler's Page.close does NOT emit Browser.detachedFromTarget,
-		// so Puppeteer would hang forever waiting for it.
-		go func() {
+		// Emit detach events BEFORE closing — Puppeteer needs them to unblock
+		{
+			// Emit detachedFromTarget + targetDestroyed for all sessions associated
+			// with this target. Also emit on any tab sessions that own this page.
 			b.autoAttach.mu.Lock()
-			for jSID, pair := range b.autoAttach.pairs {
-				if pair.pageTargetID == targetID || pair.tabTargetID == targetID {
+			found := false
+			for jKey, pair := range b.autoAttach.pairs {
+				if pair.pageTargetID == targetID || pair.tabTargetID == targetID ||
+					pair.pageSessionID == sessionID {
+					found = true
 					b.autoAttach.mu.Unlock()
-					// Emit detachedFromTarget on the tab session (Chrome does this)
 					b.emitEvent("Target.detachedFromTarget", map[string]interface{}{
 						"sessionId": pair.pageSessionID, "targetId": pair.pageTargetID,
 					}, pair.tabSessionID)
-					// Also emit on browser session
 					b.emitEvent("Target.detachedFromTarget", map[string]interface{}{
 						"sessionId": pair.tabSessionID, "targetId": pair.tabTargetID,
 					}, "")
@@ -158,18 +154,27 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 					b.sessions.Remove(pair.pageSessionID)
 					b.sessions.Remove(pair.tabSessionID)
 					b.autoAttach.mu.Lock()
-					delete(b.autoAttach.pairs, jSID)
+					delete(b.autoAttach.pairs, jKey)
 					b.autoAttach.mu.Unlock()
-					return
+					break
 				}
 			}
-			b.autoAttach.mu.Unlock()
+			if !found {
+				b.autoAttach.mu.Unlock()
+			}
+
+			// Always emit with the original IDs as fallback
 			b.emitEvent("Target.detachedFromTarget", map[string]interface{}{
 				"sessionId": sessionID, "targetId": targetID,
 			}, "")
 			b.emitEvent("Target.targetDestroyed", map[string]interface{}{"targetId": targetID}, "")
-			b.sessions.Remove(sessionID)
-		}()
+			if !found {
+				b.sessions.Remove(sessionID)
+			}
+		}
+
+		// Close the page AFTER emitting events
+		b.callJuggler(sessionID, "Page.close", nil)
 
 		return json.RawMessage(`{"success":true}`), nil
 
