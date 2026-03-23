@@ -815,24 +815,82 @@ func (c *Client) handleRuntimeGetObjectProperties(ctx context.Context, sessionID
 		return nil, err
 	}
 
-	// Use script.evaluate to get properties of the object via its handle
-	expr := `function(){const r={};for(const k in this)r[k]=this[k];return r}`
-	bidiParams, _ := json.Marshal(map[string]interface{}{
-		"functionDeclaration": expr,
-		"target": map[string]interface{}{
-			"context": bidiCtx,
-		},
-		"this": map[string]interface{}{
-			"handle": p.ObjectID,
-		},
-		"awaitPromise":    false,
-		"resultOwnership": "none",
-	})
-	result, err := c.sendBiDi(ctx, "script.callFunction", bidiParams)
-	if err != nil {
-		return nil, err
+	if p.ObjectID == "" {
+		resp, _ := json.Marshal(map[string]interface{}{"result": []interface{}{}})
+		return resp, nil
 	}
-	return c.translateScriptResult(result), nil
+
+	// Get array length first
+	lenExpr := `function() { return typeof this.length === 'number' ? this.length : Object.keys(this).length; }`
+	lenParams, _ := json.Marshal(map[string]interface{}{
+		"functionDeclaration": lenExpr,
+		"target":             map[string]interface{}{"context": bidiCtx},
+		"this":               map[string]interface{}{"handle": p.ObjectID},
+		"awaitPromise":       false,
+		"resultOwnership":    "none",
+	})
+	lenResult, err := c.sendBiDi(ctx, "script.callFunction", lenParams)
+	if err != nil {
+		resp, _ := json.Marshal(map[string]interface{}{"result": []interface{}{}})
+		return resp, nil
+	}
+
+	var lenOuter struct {
+		Result struct {
+			Type  string          `json:"type"`
+			Value json.RawMessage `json:"value"`
+		} `json:"result"`
+	}
+	json.Unmarshal(lenResult, &lenOuter)
+	var length int
+	json.Unmarshal(lenOuter.Result.Value, &length)
+
+	// Get each element as an individual handle
+	properties := make([]map[string]interface{}, 0, length+1)
+	for i := 0; i < length; i++ {
+		elemExpr := fmt.Sprintf(`function() { return this[%d]; }`, i)
+		elemParams, _ := json.Marshal(map[string]interface{}{
+			"functionDeclaration": elemExpr,
+			"target":             map[string]interface{}{"context": bidiCtx},
+			"this":               map[string]interface{}{"handle": p.ObjectID},
+			"awaitPromise":       false,
+			"resultOwnership":    "root",
+		})
+		elemResult, err := c.sendBiDi(ctx, "script.callFunction", elemParams)
+		if err != nil {
+			continue
+		}
+
+		translated := c.translateScriptResult(elemResult)
+		var juggler struct {
+			Result json.RawMessage `json:"result"`
+		}
+		json.Unmarshal(translated, &juggler)
+
+		properties = append(properties, map[string]interface{}{
+			"name":         fmt.Sprintf("%d", i),
+			"value":        juggler.Result,
+			"configurable": true,
+			"enumerable":   true,
+			"writable":     true,
+			"isOwn":        true,
+		})
+	}
+
+	// Add length property
+	properties = append(properties, map[string]interface{}{
+		"name":         "length",
+		"value":        map[string]interface{}{"type": "number", "value": length},
+		"configurable": true,
+		"enumerable":   false,
+		"writable":     true,
+		"isOwn":        true,
+	})
+
+	resp, _ := json.Marshal(map[string]interface{}{
+		"result": properties,
+	})
+	return resp, nil
 }
 
 // ──────────────────────────────────────────────

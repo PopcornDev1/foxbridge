@@ -202,8 +202,11 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 				"x": 0, "y": 0, "width": 1280, "height": 720,
 			}
 		}
+		// Juggler doesn't support fullPage — use a large clip instead
 		if params.CaptureBeyondViewport {
-			jugglerParams["fullPage"] = true
+			jugglerParams["clip"] = map[string]interface{}{
+				"x": 0, "y": 0, "width": 1920, "height": 10000,
+			}
 		}
 
 		result, err := b.callJuggler(msg.SessionID, "Page.screenshot", jugglerParams)

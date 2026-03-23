@@ -248,18 +248,13 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 
 		// Emit executionContextsCleared before the new navigation.
-		// This tells Puppeteer to reset all execution contexts for the frame.
 		// BiDi doesn't have an explicit "contexts cleared" event — we emit it on navigation.
-		if cdpSessionID != "" {
+		// Juggler emits its own Runtime.executionContextsCleared, so only do this for BiDi.
+		if b.isBiDi && cdpSessionID != "" {
 			b.ctxMapMu.Lock()
 			b.ctxMap = make(map[int]string)
 			b.ctxMapMu.Unlock()
 			b.emitEvent("Runtime.executionContextsCleared", map[string]interface{}{}, cdpSessionID)
-
-			// Mark this session for isolated world re-emission on next context creation
-			b.pendingContextClearMu.Lock()
-			b.pendingContextClear[cdpSessionID] = true
-			b.pendingContextClearMu.Unlock()
 		}
 
 		// Update session URL
@@ -434,11 +429,10 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}, cdpSessionID)
 
 		// Re-emit isolated world contexts whenever a new default context appears.
-		// Chrome keeps isolated worlds alive across navigations — only the execution
-		// context within the world changes. BiDi creates/destroys realms rapidly during
-		// navigation, so we re-emit on EVERY new default context. Puppeteer uses the
-		// same uniqueId to track the world, so duplicates update (not create) the world.
-		if cdpSessionID != "" {
+		// Only needed for BiDi — Juggler handles isolated worlds differently via
+		// the $eval combine pattern. BiDi creates/destroys realms rapidly during
+		// navigation, so we re-emit on every new default context.
+		if b.isBiDi && cdpSessionID != "" {
 			b.isolatedWorldsMu.RLock()
 			worlds := b.isolatedWorlds[cdpSessionID]
 			b.isolatedWorldsMu.RUnlock()
@@ -486,32 +480,44 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 		b.ctxMapMu.RUnlock()
 
-		// Clean up all mappings pointing to this Juggler context ID,
-		// including isolated world contexts that were mapped to the same realm.
-		var destroyIDs []int
-		b.ctxMapMu.Lock()
-		for k, v := range b.ctxMap {
-			if v == ev.ExecutionContextID {
-				destroyIDs = append(destroyIDs, k)
-				delete(b.ctxMap, k)
+		if b.isBiDi {
+			// BiDi: clean up all mappings pointing to this context ID,
+			// including isolated world contexts mapped to the same realm.
+			var destroyIDs []int
+			b.ctxMapMu.Lock()
+			for k, v := range b.ctxMap {
+				if v == ev.ExecutionContextID {
+					destroyIDs = append(destroyIDs, k)
+					delete(b.ctxMap, k)
+				}
 			}
-		}
-		b.ctxMapMu.Unlock()
+			b.ctxMapMu.Unlock()
 
-		// Emit destroy for the primary context (the one matching numericID)
-		b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
-			"executionContextId":       numericID,
-			"executionContextUniqueId": ev.ExecutionContextID,
-		}, cdpSessionID)
+			b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
+				"executionContextId":       numericID,
+				"executionContextUniqueId": ev.ExecutionContextID,
+			}, cdpSessionID)
 
-		// Also emit destroy for any isolated world contexts mapped to the same realm
-		for _, id := range destroyIDs {
-			if id != numericID && id > 0 {
-				b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
-					"executionContextId":       id,
-					"executionContextUniqueId": fmt.Sprintf("isolated-derived-%d", id),
-				}, cdpSessionID)
+			for _, id := range destroyIDs {
+				if id != numericID && id > 0 {
+					b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
+						"executionContextId":       id,
+						"executionContextUniqueId": fmt.Sprintf("isolated-derived-%d", id),
+					}, cdpSessionID)
+				}
 			}
+		} else {
+			// Juggler: clean up only the single mapping
+			if numericID > 0 {
+				b.ctxMapMu.Lock()
+				delete(b.ctxMap, numericID)
+				b.ctxMapMu.Unlock()
+			}
+
+			b.emitEvent("Runtime.executionContextDestroyed", map[string]interface{}{
+				"executionContextId":       numericID,
+				"executionContextUniqueId": ev.ExecutionContextID,
+			}, cdpSessionID)
 		}
 	})
 

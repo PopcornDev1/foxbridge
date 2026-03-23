@@ -286,7 +286,10 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		jugglerParams := map[string]interface{}{
 			"functionDeclaration": funcDecl,
 			"returnByValue":      params.ReturnByValue,
-			"awaitPromise":       params.AwaitPromise,
+		}
+		// awaitPromise is only supported by BiDi's script.callFunction, not Juggler
+		if b.isBiDi {
+			jugglerParams["awaitPromise"] = params.AwaitPromise
 		}
 
 		// Juggler ALWAYS requires executionContextId.

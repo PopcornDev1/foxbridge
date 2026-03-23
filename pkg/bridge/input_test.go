@@ -17,14 +17,14 @@ func TestHandleInput_DispatchMouseEvent(t *testing.T) {
 	}{
 		{
 			name:       "basic click",
-			params:     `{"type":"mousePressed","x":100,"y":200,"button":"left","clickCount":1}`,
+			params:     `{"type":"mousedown","x":100,"y":200,"button":"left","clickCount":1}`,
 			wantMethod: "Page.dispatchMouseEvent",
 			checkParam: "type",
-			checkValue: "mousePressed",
+			checkValue: "mousedown",
 		},
 		{
 			name:       "with modifiers",
-			params:     `{"type":"mousePressed","x":10,"y":20,"button":"right","clickCount":2,"modifiers":8}`,
+			params:     `{"type":"mousedown","x":10,"y":20,"button":"right","clickCount":2,"modifiers":8}`,
 			wantMethod: "Page.dispatchMouseEvent",
 			checkParam: "modifiers",
 			checkValue: float64(8),
@@ -70,7 +70,7 @@ func TestHandleInput_DispatchMouseEvent_AllFields(t *testing.T) {
 	msg := &cdp.Message{
 		ID:     1,
 		Method: "Input.dispatchMouseEvent",
-		Params: json.RawMessage(`{"type":"mousePressed","x":100.5,"y":200.5,"button":"left","clickCount":3,"modifiers":12,"deltaX":5.5,"deltaY":-3.2}`),
+		Params: json.RawMessage(`{"type":"mousedown","x":100.5,"y":200.5,"button":"left","clickCount":3,"modifiers":12,"deltaX":5.5,"deltaY":-3.2}`),
 	}
 	result, cdpErr := b.handleInput(nil, msg)
 	if cdpErr != nil {
@@ -84,10 +84,10 @@ func TestHandleInput_DispatchMouseEvent_AllFields(t *testing.T) {
 	json.Unmarshal(last.Params, &p)
 
 	checks := map[string]interface{}{
-		"type":       "mousePressed",
+		"type":       "mousedown",
 		"x":          100.5,
 		"y":          200.5,
-		"button":     "left",
+		"button":     float64(0),
 		"clickCount": float64(3),
 		"modifiers":  float64(12),
 		"deltaX":     5.5,

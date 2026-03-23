@@ -26,13 +26,41 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
+		// CDP uses camelCase event types, Juggler uses lowercase
+		mouseType := params.Type
+		switch mouseType {
+		case "mouseMoved":
+			mouseType = "mousemove"
+		case "mousePressed":
+			mouseType = "mousedown"
+		case "mouseReleased":
+			mouseType = "mouseup"
+		case "mouseWheel":
+			mouseType = "wheel"
+		}
+
 		jugglerParams := map[string]interface{}{
-			"type": params.Type,
+			"type": mouseType,
 			"x":    params.X,
 			"y":    params.Y,
 		}
+		// Juggler expects button as a number: 0=left, 1=middle, 2=right
+		// CDP sends it as a string: "left", "middle", "right", "none"
 		if params.Button != "" {
-			jugglerParams["button"] = params.Button
+			buttonNum := 0
+			switch params.Button {
+			case "left":
+				buttonNum = 0
+			case "middle":
+				buttonNum = 1
+			case "right":
+				buttonNum = 2
+			case "none":
+				buttonNum = 0
+			default:
+				buttonNum = 0
+			}
+			jugglerParams["button"] = buttonNum
 		}
 		if params.ClickCount > 0 {
 			jugglerParams["clickCount"] = params.ClickCount
@@ -70,8 +98,12 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
 		}
 
-		// CDP uses camelCase (keyDown/keyUp), Juggler uses lowercase (keydown/keyup)
+		// CDP uses camelCase (keyDown/keyUp/rawKeyDown), Juggler uses lowercase (keydown/keyup)
 		keyType := strings.ToLower(params.Type)
+		// CDP sends "rawKeyDown" for physical key presses, Juggler uses "keydown"
+		if keyType == "rawkeydown" {
+			keyType = "keydown"
+		}
 
 		jugglerParams := map[string]interface{}{
 			"type":     keyType,
