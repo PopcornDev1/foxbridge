@@ -46,22 +46,17 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		}
 		// Juggler expects button as a number: 0=left, 1=middle, 2=right
 		// CDP sends it as a string: "left", "middle", "right", "none"
-		if params.Button != "" {
-			buttonNum := 0
-			switch params.Button {
-			case "left":
-				buttonNum = 0
-			case "middle":
-				buttonNum = 1
-			case "right":
-				buttonNum = 2
-			case "none":
-				buttonNum = 0
-			default:
-				buttonNum = 0
-			}
-			jugglerParams["button"] = buttonNum
+		// Juggler requires button for ALL event types including mousemove
+		buttonNum := 0
+		switch params.Button {
+		case "left":
+			buttonNum = 0
+		case "middle":
+			buttonNum = 1
+		case "right":
+			buttonNum = 2
 		}
+		jugglerParams["button"] = buttonNum
 		if params.ClickCount > 0 {
 			jugglerParams["clickCount"] = params.ClickCount
 		}

@@ -271,8 +271,8 @@ func TestHandleInput_MouseEvent_OptionalFieldsOmitted(t *testing.T) {
 	last, _ := mb.LastCall()
 	var p map[string]interface{}
 	json.Unmarshal(last.Params, &p)
-	// button, clickCount, deltaX, deltaY should not be present (modifiers is always sent)
-	for _, key := range []string{"button", "clickCount", "deltaX", "deltaY"} {
+	// clickCount, deltaX, deltaY should not be present (button + modifiers are always sent)
+	for _, key := range []string{"clickCount", "deltaX", "deltaY"} {
 		if _, ok := p[key]; ok {
 			t.Errorf("unexpected key %q in params", key)
 		}
