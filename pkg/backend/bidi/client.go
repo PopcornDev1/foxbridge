@@ -1204,13 +1204,33 @@ func (c *Client) translateScriptResult(result json.RawMessage) json.RawMessage {
 			obj["value"] = remoteValue.Value
 		}
 		jugglerResult["result"] = obj
-	case "object", "array", "map", "set", "window", "nodelist", "htmlcollection":
-		obj := map[string]interface{}{"type": remoteValue.Type}
+	case "array", "nodelist", "htmlcollection":
+		// BiDi arrays/collections map to CDP "object" with subtype "array"
+		obj := map[string]interface{}{
+			"type":    "object",
+			"subtype": "array",
+		}
 		if remoteValue.Handle != "" {
 			obj["objectId"] = remoteValue.Handle
 		}
 		if remoteValue.Value != nil {
 			obj["value"] = remoteValue.Value
+		}
+		jugglerResult["result"] = obj
+	case "object", "map", "set", "window":
+		obj := map[string]interface{}{"type": "object"}
+		if remoteValue.Handle != "" {
+			obj["objectId"] = remoteValue.Handle
+		}
+		if remoteValue.Value != nil {
+			obj["value"] = remoteValue.Value
+		}
+		jugglerResult["result"] = obj
+	case "generator", "proxy", "promise", "typedarray", "arraybuffer", "regexp",
+		"date", "error", "weakmap", "weakset", "iterator", "weakref":
+		obj := map[string]interface{}{"type": "object"}
+		if remoteValue.Handle != "" {
+			obj["objectId"] = remoteValue.Handle
 		}
 		jugglerResult["result"] = obj
 	default:
