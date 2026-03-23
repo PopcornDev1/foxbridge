@@ -665,18 +665,18 @@ func (c *Client) handleDispatchKeyEvent(ctx context.Context, sessionID string, p
 	}
 
 	actions := []interface{}{}
-	switch p.Type {
-	case "keyDown":
+	switch strings.ToLower(p.Type) {
+	case "keydown", "rawkeydown":
 		actions = append(actions, map[string]interface{}{
 			"type":  "keyDown",
 			"value": keyValue,
 		})
-	case "keyUp":
+	case "keyup":
 		actions = append(actions, map[string]interface{}{
 			"type":  "keyUp",
 			"value": keyValue,
 		})
-	case "keyPress":
+	case "keypress", "char":
 		actions = append(actions, map[string]interface{}{
 			"type":  "keyDown",
 			"value": keyValue,
