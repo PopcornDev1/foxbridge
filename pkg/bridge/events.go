@@ -592,6 +592,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 			Type         string `json:"type"`
 			Message      string `json:"message"`
 			DefaultValue string `json:"defaultValue"`
+			DialogID     string `json:"dialogId"`
 		}
 		if err := json.Unmarshal(params, &ev); err != nil {
 			log.Printf("events: failed to parse Page.dialogOpened: %v", err)
@@ -599,6 +600,13 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
+
+		// Store dialog ID so handleJavaScriptDialog can include it
+		if ev.DialogID != "" && cdpSessionID != "" {
+			b.lastDialogMu.Lock()
+			b.lastDialog[cdpSessionID] = ev.DialogID
+			b.lastDialogMu.Unlock()
+		}
 
 		b.emitEvent("Page.javascriptDialogOpening", map[string]interface{}{
 			"type":               ev.Type,

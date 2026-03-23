@@ -126,6 +126,8 @@ func (c *Client) callWithContext(ctx context.Context, sessionID, method string, 
 		return c.handleDispatchMouseEvent(ctx, sessionID, params)
 	case "Page.dispatchKeyEvent":
 		return c.handleDispatchKeyEvent(ctx, sessionID, params)
+	case "Page.insertText":
+		return c.handleInsertText(ctx, sessionID, params)
 
 	// ── Runtime domain ──
 	case "Runtime.evaluate":
@@ -694,6 +696,29 @@ func (c *Client) handleDispatchKeyEvent(ctx context.Context, sessionID string, p
 				"actions": actions,
 			},
 		},
+	})
+	return c.sendBiDi(ctx, "input.performActions", bidiParams)
+}
+
+func (c *Client) handleInsertText(ctx context.Context, sessionID string, params json.RawMessage) (json.RawMessage, error) {
+	bidiCtx := c.resolveContext(sessionID)
+	var p struct {
+		Text string `json:"text"`
+	}
+	if params != nil {
+		json.Unmarshal(params, &p)
+	}
+	actions := make([]interface{}, 0, len(p.Text)*2)
+	for _, ch := range p.Text {
+		s := string(ch)
+		actions = append(actions, map[string]interface{}{"type": "keyDown", "value": s})
+		actions = append(actions, map[string]interface{}{"type": "keyUp", "value": s})
+	}
+	bidiParams, _ := json.Marshal(map[string]interface{}{
+		"context": bidiCtx,
+		"actions": []map[string]interface{}{{
+			"type": "key", "id": "keyboard", "actions": actions,
+		}},
 	})
 	return c.sendBiDi(ctx, "input.performActions", bidiParams)
 }
@@ -1271,8 +1296,9 @@ func (c *Client) translateScriptResult(result json.RawMessage) json.RawMessage {
 		if remoteValue.Handle != "" {
 			obj["objectId"] = remoteValue.Handle
 		}
-		if remoteValue.Value != nil {
-			obj["value"] = remoteValue.Value
+		// When returnByValue is true (no handle), convert BiDi serialized value to plain JSON
+		if remoteValue.Handle == "" && remoteValue.Value != nil {
+			obj["value"] = bidiValueToPlain(bidiOuter.Result)
 		}
 		jugglerResult["result"] = obj
 	case "object", "map", "set", "window":
@@ -1280,8 +1306,9 @@ func (c *Client) translateScriptResult(result json.RawMessage) json.RawMessage {
 		if remoteValue.Handle != "" {
 			obj["objectId"] = remoteValue.Handle
 		}
-		if remoteValue.Value != nil {
-			obj["value"] = remoteValue.Value
+		// When returnByValue is true (no handle), convert BiDi serialized value to plain JSON
+		if remoteValue.Handle == "" && remoteValue.Value != nil {
+			obj["value"] = bidiValueToPlain(bidiOuter.Result)
 		}
 		jugglerResult["result"] = obj
 	case "generator", "proxy", "promise", "typedarray", "arraybuffer", "regexp",
@@ -1376,6 +1403,72 @@ func (c *Client) toBiDiArg(raw json.RawMessage) map[string]interface{} {
 		return map[string]interface{}{"type": "boolean", "value": tv}
 	default:
 		return map[string]interface{}{"type": "undefined"}
+	}
+}
+
+// bidiValueToPlain recursively converts a BiDi serialized value to a plain Go value.
+// BiDi: {type: "array", value: [{type: "number", value: 1}, ...]}
+// Plain: [1, ...]
+func bidiValueToPlain(raw json.RawMessage) interface{} {
+	var entry struct {
+		Type  string          `json:"type"`
+		Value json.RawMessage `json:"value"`
+	}
+	if json.Unmarshal(raw, &entry) != nil {
+		return nil
+	}
+
+	switch entry.Type {
+	case "string":
+		var s string
+		json.Unmarshal(entry.Value, &s)
+		return s
+	case "number":
+		var n float64
+		json.Unmarshal(entry.Value, &n)
+		return n
+	case "boolean":
+		var b bool
+		json.Unmarshal(entry.Value, &b)
+		return b
+	case "null":
+		return nil
+	case "undefined":
+		return nil
+	case "array", "nodelist", "htmlcollection":
+		var items []json.RawMessage
+		json.Unmarshal(entry.Value, &items)
+		result := make([]interface{}, len(items))
+		for i, item := range items {
+			result[i] = bidiValueToPlain(item)
+		}
+		return result
+	case "object", "map":
+		// BiDi objects serialize as [[key, value], [key, value], ...]
+		var pairs []json.RawMessage
+		if json.Unmarshal(entry.Value, &pairs) == nil {
+			result := map[string]interface{}{}
+			for _, pair := range pairs {
+				var kv []json.RawMessage
+				if json.Unmarshal(pair, &kv) == nil && len(kv) == 2 {
+					var key string
+					json.Unmarshal(kv[0], &key)
+					if key == "" {
+						// Try as {type: "string", value: "key"}
+						var keyEntry struct {
+							Value string `json:"value"`
+						}
+						json.Unmarshal(kv[0], &keyEntry)
+						key = keyEntry.Value
+					}
+					result[key] = bidiValueToPlain(kv[1])
+				}
+			}
+			return result
+		}
+		return nil
+	default:
+		return nil
 	}
 }
 

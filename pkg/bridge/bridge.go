@@ -39,6 +39,9 @@ type Bridge struct {
 	lastQuery        map[string]string // cdpSessionID → CSS selector
 	lastQueryAll     map[string]bool   // cdpSessionID → true if querySelectorAll
 	lastQuerySkips   map[string]int    // cdpSessionID → remaining calls to skip before user fn
+	// lastDialogID tracks the last dialog ID per CDP session for handleDialog
+	lastDialogMu sync.Mutex
+	lastDialog   map[string]string // cdpSessionID → dialogId
 	// pendingContextClear tracks sessions that had executionContextsCleared.
 	// The next executionContextCreated should trigger isolated world re-emission.
 	pendingContextClearMu sync.Mutex
@@ -64,6 +67,7 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server, is
 		lastQuery:           make(map[string]string),
 		lastQueryAll:        make(map[string]bool),
 		lastQuerySkips:      make(map[string]int),
+		lastDialog:          make(map[string]string),
 		pendingContextClear: make(map[string]bool),
 	}
 }

@@ -563,6 +563,14 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			jugglerParams["promptText"] = params.PromptText
 		}
 
+		// Juggler requires dialogId — retrieve from the last dialogOpened event
+		b.lastDialogMu.Lock()
+		if dialogID, ok := b.lastDialog[msg.SessionID]; ok {
+			jugglerParams["dialogId"] = dialogID
+			delete(b.lastDialog, msg.SessionID)
+		}
+		b.lastDialogMu.Unlock()
+
 		_, err := b.callJuggler(msg.SessionID, "Page.handleDialog", jugglerParams)
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
