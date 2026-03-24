@@ -174,7 +174,28 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 			isPuppeteerInternal = strings.Contains(funcDecl, "addPageBinding") ||
 				strings.Contains(funcDecl, "puppeteer_") ||
-				strings.Contains(funcDecl, "__ariaQuery")
+				strings.Contains(funcDecl, "__ariaQuery") ||
+				strings.Contains(funcDecl, "transposeIterable") ||
+				strings.Contains(funcDecl, "fastTransposeIterator") ||
+				strings.Contains(funcDecl, "async function*") ||
+				strings.Contains(funcDecl, "iterator.next") ||
+				strings.Contains(funcDecl, "assertConnectedElement") ||
+				strings.Contains(funcDecl, "instanceof SVGElement") ||
+				strings.Contains(funcDecl, "IntersectionObserver") ||
+				strings.Contains(funcDecl, "getClientRects") ||
+				strings.Contains(funcDecl, "documentWidth") ||
+				strings.Contains(funcDecl, "checkVisibility")
+		}
+
+		// If a pending selector exists but the next call is a Puppeteer internal function,
+		// it means this is $() or $$() not $eval/$$eval — clear the pending selector
+		if pendingSelector != "" && isPuppeteerInternal {
+			b.lastQueryMu.Lock()
+			delete(b.lastQuery, msg.SessionID)
+			delete(b.lastQueryAll, msg.SessionID)
+			delete(b.lastQuerySkips, msg.SessionID)
+			b.lastQueryMu.Unlock()
+			pendingSelector = ""
 		}
 
 		if pendingSelector != "" && !strings.Contains(funcDecl, "cssQuerySelector") && !isPuppeteerInternal {
@@ -254,12 +275,26 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 					b.lastQuerySkips[msg.SessionID] = skips
 					b.lastQueryMu.Unlock()
 
-					return marshalResult(map[string]interface{}{
-						"result": map[string]interface{}{
-							"type":    "object",
-							"subtype": "node",
-						},
-					})
+					// Execute the real querySelector via Juggler so $() and $$() get real handles.
+					// The stored selector is still available for $eval/$$eval combine.
+					var expr string
+					if isAll {
+						expr = fmt.Sprintf(`document.querySelectorAll(%q)`, selectorArg.Value)
+					} else {
+						expr = fmt.Sprintf(`document.querySelector(%q)`, selectorArg.Value)
+					}
+					evalParams := map[string]interface{}{
+						"expression":    expr,
+						"returnByValue": false,
+					}
+					if latest := b.latestContextForSession(msg.SessionID); latest != "" {
+						evalParams["executionContextId"] = latest
+					}
+					result, err := b.callJuggler(msg.SessionID, "Runtime.evaluate", evalParams)
+					if err != nil {
+						return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+					}
+					return result, nil
 				}
 			}
 		}
