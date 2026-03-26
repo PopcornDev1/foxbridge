@@ -29,13 +29,13 @@ type Config struct {
 
 // Process manages a Firefox/Camoufox browser process.
 type Process struct {
-	cmd       *exec.Cmd
-	client    *juggler.Client
-	transport *juggler.PipeTransport
-	bidiPort  int
+	cmd              *exec.Cmd
+	client           *juggler.Client
+	transport        *juggler.PipeTransport
+	bidiPort         int
 	startedAt time.Time
-	waited    bool
-	mu        sync.Mutex
+	waited           bool
+	mu               sync.Mutex
 }
 
 // New creates a new Process instance without starting it.
@@ -83,7 +83,7 @@ func (p *Process) Start(cfg Config) error {
 	args = append(args, cfg.ExtraArgs...)
 
 	cmd := exec.Command(bin, args...)
-	// Suppress Firefox output — redirect to /dev/null or log file
+	// Suppress Firefox output
 	devNull, _ := os.Open(os.DevNull)
 	cmd.Stdout = devNull
 	cmd.Stderr = devNull

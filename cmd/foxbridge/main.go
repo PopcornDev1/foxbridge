@@ -75,13 +75,14 @@ func main() {
 			defer proc.Stop()
 
 			// Wait for the BiDi WebSocket port to become available.
-			wsURL := proc.BiDiURL()
 			addr := fmt.Sprintf("127.0.0.1:%d", *bidiPort)
 			log.Printf("firefox started (PID %d), waiting for BiDi on %s...", proc.PID(), addr)
 			if err := waitForPort(addr, 15*time.Second); err != nil {
 				log.Fatalf("BiDi port never became available: %v", err)
 			}
 
+			// Get BiDi URL (auto-discovered from Firefox stderr, or fallback)
+			wsURL := proc.BiDiURL()
 			transport, err := bidi.Dial(wsURL)
 			if err != nil {
 				log.Fatalf("failed to connect to BiDi endpoint %s: %v", wsURL, err)
