@@ -172,18 +172,17 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			pendingAll = b.lastQueryAll[msg.SessionID]
 			b.lastQueryMu.RUnlock()
 
+			// Match on function BODY content (sourceURL is stripped before this point)
 			isPuppeteerInternal = strings.Contains(funcDecl, "addPageBinding") ||
 				strings.Contains(funcDecl, "puppeteer_") ||
 				strings.Contains(funcDecl, "__ariaQuery") ||
-				strings.Contains(funcDecl, "transposeIterable") ||
-				strings.Contains(funcDecl, "fastTransposeIterator") ||
-				strings.Contains(funcDecl, "async function*") ||
-				strings.Contains(funcDecl, "iterator.next") ||
-				strings.Contains(funcDecl, "assertConnectedElement") ||
-				strings.Contains(funcDecl, "instanceof SVGElement") ||
-				strings.Contains(funcDecl, "IntersectionObserver") ||
-				strings.Contains(funcDecl, "getClientRects") ||
-				strings.Contains(funcDecl, "documentWidth") ||
+				strings.Contains(funcDecl, "yield* iterable") ||          // transposeIterableHandle
+				strings.Contains(funcDecl, "iterator.next()") ||          // fastTransposeIteratorHandle
+				strings.Contains(funcDecl, "element.isConnected") ||      // assertConnectedElement
+				strings.Contains(funcDecl, "instanceof SVGElement") ||    // asSVGElementHandle
+				strings.Contains(funcDecl, "IntersectionObserver") ||     // scrollIntoView/visibility
+				strings.Contains(funcDecl, "getClientRects") ||           // clickableBox
+				strings.Contains(funcDecl, "clientWidth") ||              // intersectBoundingBoxes
 				strings.Contains(funcDecl, "checkVisibility")
 		}
 
@@ -336,11 +335,19 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			hasObjectIdArgs = strings.Contains(string(finalArgs), `"objectId"`)
 		}
 		if hasObjectIdArgs || params.ObjectID != "" {
-			// Use the caller-specified context (from Puppeteer), or fall back to execCtxID
-			if execCtxID != "" {
+			// Object handles from our querySelector interception live in the latest context.
+			// The caller might request a utility world context (mapped to a stale Juggler ID).
+			// For Juggler (not BiDi), prefer latest context since all worlds share the same
+			// underlying JavaScript environment. For BiDi, use the caller's context.
+			if !b.isBiDi {
+				if latest := b.latestContextForSession(msg.SessionID); latest != "" {
+					jugglerParams["executionContextId"] = latest
+				} else if execCtxID != "" {
+					jugglerParams["executionContextId"] = execCtxID
+				}
+			} else if execCtxID != "" {
 				jugglerParams["executionContextId"] = execCtxID
 			} else {
-				// Last resort — use latest context
 				if latest := b.latestContextForSession(msg.SessionID); latest != "" {
 					jugglerParams["executionContextId"] = latest
 				}
