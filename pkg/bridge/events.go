@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
@@ -653,6 +654,24 @@ func (b *Bridge) SetupEventSubscriptions() {
 			cdpHeaders[k] = v
 		}
 
+		// Detect WebSocket connections from URL scheme
+		isWebSocket := strings.HasPrefix(ev.URL, "ws://") || strings.HasPrefix(ev.URL, "wss://")
+
+		if isWebSocket {
+			// Emit WebSocket-specific CDP events
+			b.emitEvent("Network.webSocketCreated", map[string]interface{}{
+				"requestId": ev.RequestID,
+				"url":       ev.URL,
+			}, cdpSessionID)
+		}
+
+		resourceType := "Document"
+		if isWebSocket {
+			resourceType = "WebSocket"
+		} else if !ev.IsNavigation {
+			resourceType = "Other"
+		}
+
 		b.emitEvent("Network.requestWillBeSent", map[string]interface{}{
 			"requestId": ev.RequestID,
 			"loaderId":  ev.RequestID,
@@ -669,7 +688,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 			"initiator": map[string]interface{}{
 				"type": "other",
 			},
-			"type":    "Document",
+			"type":    resourceType,
 			"frameId": ev.FrameID,
 		}, cdpSessionID)
 	})

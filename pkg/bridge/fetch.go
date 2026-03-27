@@ -226,6 +226,39 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		})
 		return resp, nil
 
+	case "Fetch.continueResponse":
+		// Continue with modified response — allows response body interception.
+		// The response is forwarded to the page with optional modifications.
+		var params struct {
+			RequestID       string        `json:"requestId"`
+			ResponseCode    int           `json:"responseCode"`
+			ResponseHeaders []headerEntry `json:"responseHeaders"`
+			BinaryResponseHeaders string  `json:"binaryResponseHeaders"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
+		}
+
+		jugglerParams := map[string]interface{}{
+			"requestId": params.RequestID,
+		}
+		if params.ResponseCode > 0 {
+			jugglerParams["status"] = params.ResponseCode
+		}
+		if len(params.ResponseHeaders) > 0 {
+			headers := make([]map[string]string, len(params.ResponseHeaders))
+			for i, h := range params.ResponseHeaders {
+				headers[i] = map[string]string{"name": h.Name, "value": h.Value}
+			}
+			jugglerParams["headers"] = headers
+		}
+
+		_, err := b.callJuggler("", "Browser.continueInterceptedRequest", jugglerParams)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return json.RawMessage(`{}`), nil
+
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}
