@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 )
@@ -692,9 +693,16 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		}
 		json.Unmarshal(result, &pdfResult)
 
+		// Puppeteer v24 requires "stream" (IO.StreamHandle).
+		// Store the PDF data and return a stream handle that IO.read can serve.
+		streamHandle := fmt.Sprintf("pdf-stream-%d", time.Now().UnixNano())
+		b.pdfStreamsMu.Lock()
+		b.pdfStreams[streamHandle] = pdfResult.Data
+		b.pdfStreamsMu.Unlock()
+
 		return marshalResult(map[string]interface{}{
 			"data":   pdfResult.Data,
-			"stream": nil,
+			"stream": streamHandle,
 		})
 
 	case "Page.removeScriptToEvaluateOnNewDocument":

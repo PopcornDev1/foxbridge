@@ -42,6 +42,9 @@ type Bridge struct {
 	// lastDialogID tracks the last dialog ID per CDP session for handleDialog
 	lastDialogMu sync.Mutex
 	lastDialog   map[string]string // cdpSessionID → dialogId
+	// pdfStreams stores PDF data for IO.read streaming
+	pdfStreamsMu sync.Mutex
+	pdfStreams    map[string]string // streamHandle → base64 data
 	// pendingContextClear tracks sessions that had executionContextsCleared.
 	// The next executionContextCreated should trigger isolated world re-emission.
 	pendingContextClearMu sync.Mutex
@@ -68,6 +71,7 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server, is
 		lastQueryAll:        make(map[string]bool),
 		lastQuerySkips:      make(map[string]int),
 		lastDialog:          make(map[string]string),
+		pdfStreams:           make(map[string]string),
 		pendingContextClear: make(map[string]bool),
 	}
 }
@@ -102,6 +106,8 @@ func (b *Bridge) HandleMessage(conn *cdp.Connection, msg *cdp.Message) {
 		result, cdpErr = b.handleFetch(conn, msg)
 	case strings.HasPrefix(method, "Performance."):
 		result, cdpErr = b.handlePerformance(conn, msg)
+	case strings.HasPrefix(method, "IO."):
+		result, cdpErr = b.handleIO(conn, msg)
 	default:
 		result, cdpErr = b.handleStub(conn, msg)
 	}

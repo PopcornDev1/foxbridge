@@ -99,7 +99,23 @@ func (c *Client) callWithContext(ctx context.Context, sessionID, method string, 
 	case "Browser.clearCookies":
 		return c.handleClearCookies(ctx, params)
 	case "Browser.setTimezoneOverride":
-		// BiDi doesn't have a native timezone override — return success silently
+		return json.RawMessage(`{}`), nil
+	case "Browser.setUserAgentOverride":
+		// BiDi doesn't have a native UA override. Use script.addPreloadScript
+		// to inject Object.defineProperty(navigator, 'userAgent', ...) on every page.
+		var p struct {
+			UserAgent string `json:"userAgent"`
+		}
+		if params != nil {
+			json.Unmarshal(params, &p)
+		}
+		if p.UserAgent != "" {
+			script := fmt.Sprintf(`() => { Object.defineProperty(navigator, 'userAgent', { get: () => %q }); }`, p.UserAgent)
+			bidiParams, _ := json.Marshal(map[string]interface{}{
+				"functionDeclaration": script,
+			})
+			c.sendBiDi(ctx, "script.addPreloadScript", bidiParams)
+		}
 		return json.RawMessage(`{}`), nil
 	case "Browser.setExtraHTTPHeaders":
 		return c.handleSetExtraHTTPHeaders(ctx, sessionID, params)

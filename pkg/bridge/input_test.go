@@ -222,9 +222,19 @@ func TestHandleInput_DispatchTouchEvent(t *testing.T) {
 	if last.Method != "Page.dispatchTouchEvent" {
 		t.Errorf("method = %q, want Page.dispatchTouchEvent", last.Method)
 	}
-	// Params should be passed through as-is
-	if string(last.Params) != params {
-		t.Errorf("params = %s, want %s", string(last.Params), params)
+	// Verify touchPoints are forwarded (without "id" field)
+	var p map[string]interface{}
+	json.Unmarshal(last.Params, &p)
+	if p["type"] != "touchStart" {
+		t.Errorf("type = %v, want touchStart", p["type"])
+	}
+	points, ok := p["touchPoints"].([]interface{})
+	if !ok || len(points) == 0 {
+		t.Fatalf("touchPoints missing or empty")
+	}
+	pt := points[0].(map[string]interface{})
+	if pt["x"] != float64(100) || pt["y"] != float64(200) {
+		t.Errorf("touchPoint = %v, want x:100 y:200", pt)
 	}
 }
 

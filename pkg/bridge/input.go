@@ -154,8 +154,47 @@ func (b *Bridge) handleInput(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		return json.RawMessage(`{}`), nil
 
 	case "Input.dispatchTouchEvent":
-		// Pass through to Juggler's touch event handler.
-		_, err := b.callJuggler(msg.SessionID, "Page.dispatchTouchEvent", msg.Params)
+		// Translate CDP touch params to Juggler format.
+		// CDP includes "id" in touchPoints which Juggler rejects.
+		var params struct {
+			Type        string `json:"type"`
+			TouchPoints []struct {
+				X             float64 `json:"x"`
+				Y             float64 `json:"y"`
+				RadiusX       float64 `json:"radiusX"`
+				RadiusY       float64 `json:"radiusY"`
+				RotationAngle float64 `json:"rotationAngle"`
+				Force         float64 `json:"force"`
+			} `json:"touchPoints"`
+			Modifiers int `json:"modifiers"`
+		}
+		if err := json.Unmarshal(msg.Params, &params); err != nil {
+			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
+		}
+
+		// Build Juggler-compatible touchPoints (no "id" field)
+		points := make([]map[string]interface{}, len(params.TouchPoints))
+		for i, tp := range params.TouchPoints {
+			points[i] = map[string]interface{}{
+				"x": tp.X,
+				"y": tp.Y,
+			}
+			if tp.RadiusX > 0 {
+				points[i]["radiusX"] = tp.RadiusX
+			}
+			if tp.RadiusY > 0 {
+				points[i]["radiusY"] = tp.RadiusY
+			}
+			if tp.Force > 0 {
+				points[i]["force"] = tp.Force
+			}
+		}
+
+		_, err := b.callJuggler(msg.SessionID, "Page.dispatchTouchEvent", map[string]interface{}{
+			"type":        params.Type,
+			"touchPoints": points,
+			"modifiers":   params.Modifiers,
+		})
 		if err != nil {
 			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
