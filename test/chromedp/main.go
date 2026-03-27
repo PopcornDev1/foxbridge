@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Chromedp test for foxbridge — tests CDP from a Go client
 //
 // Prerequisites: foxbridge running on port 9222
