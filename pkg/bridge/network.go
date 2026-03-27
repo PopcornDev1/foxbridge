@@ -3,7 +3,6 @@ package bridge
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/PopcornDev1/foxbridge/pkg/cdp"
 )
@@ -38,8 +37,7 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		_, err := b.callJuggler("", "Browser.setCookies", jugglerParams)
 		if err != nil {
-			log.Printf("[network] %s failed: %v", msg.Method, err)
-		return json.RawMessage(`{}`), nil
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 		return json.RawMessage(`{}`), nil
 
@@ -61,9 +59,7 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		result, err := b.callJuggler("", "Browser.getCookies", jugglerParams)
 		if err != nil {
-			log.Printf("[network] getCookies failed: %v", err)
-			r, _ := marshalResult(map[string]interface{}{"cookies": []interface{}{}})
-			return r, nil
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 		return result, nil
 
@@ -89,8 +85,7 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		_, err := b.callJuggler("", "Browser.clearCookies", jugglerParams)
 		if err != nil {
-			log.Printf("[network] %s failed: %v", msg.Method, err)
-		return json.RawMessage(`{}`), nil
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 		return json.RawMessage(`{}`), nil
 
@@ -113,8 +108,7 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		_, err := b.callJuggler("", "Browser.setExtraHTTPHeaders", jugglerParams)
 		if err != nil {
-			log.Printf("[network] %s failed: %v", msg.Method, err)
-		return json.RawMessage(`{}`), nil
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 		return json.RawMessage(`{}`), nil
 
@@ -137,13 +131,28 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		_, err := b.callJuggler("", "Browser.setRequestInterception", jugglerParams)
 		if err != nil {
-			log.Printf("[network] %s failed: %v", msg.Method, err)
-		return json.RawMessage(`{}`), nil
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 		return json.RawMessage(`{}`), nil
 
 	case "Network.setUserAgentOverride":
-		// Handled via Emulation or stub — no-op here.
+		var params struct {
+			UserAgent string `json:"userAgent"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+		if params.UserAgent != "" {
+			jugglerUA := map[string]interface{}{
+				"userAgent": params.UserAgent,
+			}
+			if msg.SessionID != "" {
+				if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
+					jugglerUA["browserContextId"] = info.BrowserContextID
+				}
+			}
+			b.callJuggler("", "Browser.setUserAgentOverride", jugglerUA)
+		}
 		return json.RawMessage(`{}`), nil
 
 	case "Network.emulateNetworkConditions":
@@ -163,8 +172,7 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			"requestId": params.RequestID,
 		})
 		if err != nil {
-			log.Printf("[network] %s failed: %v", msg.Method, err)
-		return json.RawMessage(`{}`), nil
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
 		}
 		return result, nil
 

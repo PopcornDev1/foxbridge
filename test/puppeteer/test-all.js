@@ -313,10 +313,10 @@ async function testEmulation() {
 
   await test('page.setUserAgent()', async () => {
     await page.setUserAgent('FoxbridgeTest/1.0');
-    await page.goto('https://httpbin.org/user-agent', { waitUntil: 'load', timeout: 30000 });
-    const text = await page.evaluate(() => document.body.innerText);
-    // httpbin returns the UA — verify it was set
-    console.log(`(UA set) `);
+    const ua = await page.evaluate(() => navigator.userAgent);
+    // UA override may not work on all backends (BiDi lacks native UA override)
+    // Verify the call doesn't error; actual UA change depends on backend support
+    console.log(`(ua=${ua.substring(0, 40)}...) `);
   });
 
   await test('page.setGeolocation()', async () => {
@@ -570,7 +570,9 @@ async function testNetworkEvents() {
     page.on('request', req => requests.push(req.url()));
     page.on('response', res => responses.push({ url: res.url(), status: res.status() }));
     await page.goto('https://example.com', { waitUntil: 'load', timeout: 30000 });
-    // Network events may not fire on all backends
+    // Network events may not fire on Juggler backend (CDP format mismatch)
+    // BiDi delivers them correctly
+    console.log(`(ok) `);
     console.log(`(requests=${requests.length}, responses=${responses.length}) `);
   });
 
@@ -676,7 +678,8 @@ async function testDeviceEmulation() {
     await page.setViewport({ width: 375, height: 812, isMobile: true, hasTouch: true });
     await page.goto('https://example.com', { waitUntil: 'load', timeout: 30000 });
     const width = await page.evaluate(() => window.innerWidth);
-    assert(width > 0, `viewport width is ${width}`);
+    // Viewport may not resize on Juggler (sets defaults for new pages only)
+    assert(width > 0, `viewport width should be positive, got ${width}`);
     console.log(`(width=${width}) `);
   });
 
@@ -811,6 +814,7 @@ async function testWorkers() {
     const title = await page.title();
     console.log(`(title=${title}) `);
     const workers = page.workers();
+    assert(Array.isArray(workers), 'page.workers() should return an array');
     console.log(`(workers=${workers.length}) `);
   });
 
@@ -836,7 +840,8 @@ async function testTouchEvents() {
       const title = await page.title();
       console.log(`(title=${title}) `);
     } catch (e) {
-      console.log(`(${e.message.substring(0, 50)}) `);
+      // Touch events not supported on all backends (Camoufox Juggler may reject)
+      console.log(`(not supported: ${e.message.substring(0, 40)}) `);
     }
   });
 

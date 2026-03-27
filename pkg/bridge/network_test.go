@@ -416,9 +416,13 @@ func TestNetworkSetUserAgentOverride(t *testing.T) {
 	if string(result) != "{}" {
 		t.Errorf("result = %s, want {}", string(result))
 	}
-	// No-op
-	if mb.CallCount() != 0 {
-		t.Errorf("expected 0 backend calls for no-op, got %d", mb.CallCount())
+	// Should call Browser.setUserAgentOverride on Juggler
+	if mb.CallCount() != 1 {
+		t.Errorf("expected 1 backend call, got %d", mb.CallCount())
+	}
+	last, _ := mb.LastCall()
+	if last.Method != "Browser.setUserAgentOverride" {
+		t.Errorf("method = %q, want Browser.setUserAgentOverride", last.Method)
 	}
 }
 
