@@ -12,7 +12,6 @@ import (
 var stubDomains = map[string]bool{
 	"Debugger":      true,
 	"Profiler":      true,
-	"Performance":   true,
 	"HeapProfiler":  true,
 	"Memory":        true,
 	"ServiceWorker": true,
@@ -20,7 +19,6 @@ var stubDomains = map[string]bool{
 	"IndexedDB":     true,
 	"Log":           true,
 	"Security":      true,
-	"Fetch":         true,
 	"CSS":           true,
 	"Overlay":       true,
 	"DOMStorage":    true,

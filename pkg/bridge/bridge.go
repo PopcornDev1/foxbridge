@@ -100,6 +100,8 @@ func (b *Bridge) HandleMessage(conn *cdp.Connection, msg *cdp.Message) {
 		result, cdpErr = b.handleConsole(conn, msg)
 	case strings.HasPrefix(method, "Fetch."):
 		result, cdpErr = b.handleFetch(conn, msg)
+	case strings.HasPrefix(method, "Performance."):
+		result, cdpErr = b.handlePerformance(conn, msg)
 	default:
 		result, cdpErr = b.handleStub(conn, msg)
 	}

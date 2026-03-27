@@ -848,6 +848,23 @@ async function testTouchEvents() {
   await page.close();
 }
 
+async function testPerformanceMetrics() {
+  console.log('\n📊 Performance Metrics');
+
+  const page = await browser.newPage();
+  await page.goto('https://example.com', { waitUntil: 'load', timeout: 30000 });
+
+  await test('page.metrics()', async () => {
+    const metrics = await page.metrics();
+    assert(metrics, 'metrics is null');
+    assert(typeof metrics === 'object', 'metrics should be an object');
+    const keys = Object.keys(metrics);
+    console.log(`(${keys.length} metrics: ${keys.slice(0, 4).join(', ')}...) `);
+  });
+
+  await page.close();
+}
+
 // ============================================================
 // MAIN
 // ============================================================
@@ -884,6 +901,7 @@ async function main() {
     await testAccessibility();
     await testWorkers();
     await testTouchEvents();
+    await testPerformanceMetrics();
   } catch (err) {
     console.error('\n💥 Fatal error:', err.message);
   } finally {
