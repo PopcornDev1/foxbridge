@@ -54,9 +54,8 @@ For `mousemove`, `mouseup`, and `wheel` events, `buttons` is always `0`.
 | `keyDown` | `keydown` |
 | `keyUp` | `keyup` |
 | `rawKeyDown` | `keydown` |
-| `char` | `keypress` |
 
-The `rawKeyDown` mapping is the most important -- CDP uses this for physical key presses, but Juggler only understands `keydown`. The translation is a simple `strings.ToLower()` with a special case for `rawkeydown`.
+The `rawKeyDown` mapping is the most important — CDP uses this for physical key presses, but Juggler only understands `keydown`. The translation uses `strings.ToLower()` with a special case for `rawkeydown → keydown`.
 
 ### Field Mapping
 

@@ -54,13 +54,20 @@ In your `openclaw.json`:
 
 ## Embedded Mode (VulpineOS)
 
-When used inside VulpineOS, foxbridge runs as an embedded Go library — no separate process:
+When used inside VulpineOS, foxbridge runs as an embedded Go library — no separate process. VulpineOS wraps the kernel's Juggler client with foxbridge's bridge and CDP server:
 
 ```go
-import "github.com/PopcornDev1/foxbridge/pkg/bridge"
+import (
+    "github.com/PopcornDev1/foxbridge/pkg/bridge"
+    "github.com/PopcornDev1/foxbridge/pkg/cdp"
+)
 
-// Wrap existing Juggler client
-embedded, _ := foxbridge.StartEmbedded(jugglerClient, 9222)
-defer embedded.Stop()
+// Create bridge wrapping the Juggler client
+sessions := cdp.NewSessionManager()
+server := cdp.NewServer(9222, handler, sessions)
+b := bridge.New(jugglerBackend, sessions, server)
+b.SetupEventSubscriptions()
 // CDP now available at ws://127.0.0.1:9222
 ```
+
+See the [VulpineOS integration page](/vulpineos) for the full architecture.
