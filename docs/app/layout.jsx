@@ -10,7 +10,7 @@ export const metadata = {
 
 const logo = (
   <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '1.1rem' }}>
-    <span style={{ fontSize: '1.3rem' }}>🦊</span>
+    <img src="/FoxbridgeLogo.png" alt="Foxbridge" width={28} height={28} style={{ borderRadius: '50%' }} />
     <span>Foxbridge</span>
   </span>
 )
@@ -27,6 +27,7 @@ export default async function RootLayout({ children }) {
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <Head>
         <meta name="theme-color" content="#F97316" />
+        <link rel="icon" href="/FoxbridgeLogo.png" />
       </Head>
       <body>
         <Layout
