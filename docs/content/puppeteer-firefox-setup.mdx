@@ -1,0 +1,114 @@
+---
+title: "How to Use Puppeteer with Firefox — Step-by-Step Setup Guide"
+description: "Connect Puppeteer to Firefox using foxbridge CDP proxy. Full setup guide with code examples for Camoufox and standard Firefox."
+---
+
+# How to Use Puppeteer with Firefox
+
+Puppeteer was built for Chrome, but foxbridge lets you use it with Firefox — including anti-detect browsers like Camoufox. This guide walks through the complete setup.
+
+## Why Use Puppeteer with Firefox?
+
+Chrome is the default for browser automation, but it has critical limitations for AI agents and web scraping:
+
+- **Bot detection**: Chrome is trivially detectable by anti-bot systems. Sites like Cloudflare, DataDome, and PerimeterX fingerprint Chrome's automation markers.
+- **No anti-detect**: Chrome doesn't support per-context fingerprint spoofing. Every tab looks identical.
+- **Memory**: Chrome uses 50-80MB per context vs Firefox's 10-15MB.
+
+Foxbridge solves this by translating CDP (Chrome DevTools Protocol) to Firefox's native Juggler or WebDriver BiDi protocols. Puppeteer connects to foxbridge thinking it's Chrome, but the actual browsing happens in Firefox.
+
+## Prerequisites
+
+- **Go 1.21+** — foxbridge is written in Go
+- **Firefox** or **Camoufox** — the browser foxbridge will control
+- **Node.js 18+** — for Puppeteer
+
+## Step 1: Install Foxbridge
+
+```bash
+go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+```
+
+## Step 2: Start Foxbridge with Firefox
+
+### With Camoufox (recommended for stealth)
+
+```bash
+foxbridge --binary /path/to/camoufox --port 9222 --headless
+```
+
+### With standard Firefox (via BiDi backend)
+
+```bash
+foxbridge --backend bidi --binary /path/to/firefox --port 9222 --bidi-port 9224 --headless
+```
+
+## Step 3: Connect Puppeteer
+
+```javascript
+const puppeteer = require('puppeteer-core');
+
+const browser = await puppeteer.connect({
+  browserWSEndpoint: 'ws://127.0.0.1:9222/devtools/browser/foxbridge',
+  defaultViewport: null,
+});
+
+const page = await browser.newPage();
+await page.goto('https://example.com');
+console.log(await page.title()); // "Example Domain"
+
+// Screenshots work
+await page.screenshot({ path: 'screenshot.png' });
+
+// $eval works
+const heading = await page.$eval('h1', el => el.textContent);
+console.log(heading); // "Example Domain"
+
+// Request interception works
+await page.setRequestInterception(true);
+page.on('request', req => {
+  if (req.url().includes('analytics')) req.abort();
+  else req.continue();
+});
+
+await browser.disconnect();
+```
+
+## What Works
+
+Foxbridge passes **74/74 Puppeteer tests** on Camoufox (Juggler backend) and **62/62 tests** on Firefox (BiDi backend). This includes:
+
+- Navigation (`goto`, `reload`, `goBack`, `goForward`)
+- Screenshots (viewport and full-page)
+- PDF generation with IO streaming
+- `$eval`, `$$eval`, `evaluate`, `evaluateHandle`
+- Request interception (block, modify, fulfill)
+- Cookies (set, get, delete, per-context isolation)
+- Device emulation (viewport, user agent, geolocation, timezone)
+- Mouse, keyboard, and touch input
+- Multiple browser contexts with isolated state
+
+## Foxbridge vs Playwright for Firefox
+
+Playwright also supports Firefox, but via its own custom Juggler fork. Key differences:
+
+| | Foxbridge | Playwright |
+|---|---|---|
+| Protocol | CDP (standard) | Playwright protocol (proprietary) |
+| Camoufox support | Full | No |
+| Anti-detect fingerprints | Per-context via BrowserForge | No |
+| Puppeteer compatible | Yes | No |
+| OpenClaw compatible | Yes | No |
+
+## Next Steps
+
+Once Puppeteer is connected, you can use the full Puppeteer API — no modifications needed. For production use with AI agents, consider [VulpineOS](https://vulpineos.com) which embeds foxbridge and manages hundreds of agents on a single Camoufox instance.
+
+---
+
+## See also
+
+- [Quick Start](/quick-start) — Minimal setup instructions
+- [CDP Domain Coverage](/cdp-coverage) — All 13 implemented domains
+- [Puppeteer Integration](/puppeteer) — Compatibility details
+- [Foxbridge vs Alternatives](/comparison) — How foxbridge compares

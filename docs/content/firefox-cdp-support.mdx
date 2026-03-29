@@ -1,0 +1,94 @@
+---
+title: "CDP Support for Firefox — Chrome DevTools Protocol via Foxbridge"
+description: "Firefox doesn't support CDP natively. Foxbridge adds full Chrome DevTools Protocol support to Firefox and Camoufox via protocol translation."
+---
+
+# CDP Support for Firefox
+
+Firefox does not support Chrome DevTools Protocol (CDP). Firefox has its own automation protocols — Juggler (used by Playwright) and WebDriver BiDi (the emerging W3C standard). This means tools built for Chrome's CDP — like Puppeteer, OpenClaw, and browser-use — cannot control Firefox directly.
+
+Foxbridge adds CDP support to Firefox by translating CDP commands to Firefox's native protocols in real-time.
+
+## The Protocol Gap
+
+| Protocol | Chrome | Firefox |
+|----------|--------|---------|
+| CDP | Native | **Not supported** → foxbridge adds it |
+| WebDriver BiDi | Experimental | Native (Firefox 129+) |
+| Juggler | No | Yes (Playwright/Camoufox) |
+
+## How Foxbridge Adds CDP to Firefox
+
+Foxbridge runs as a proxy between your CDP tool and Firefox:
+
+1. Your tool connects to `ws://localhost:9222` — a standard CDP WebSocket
+2. Foxbridge receives CDP commands (e.g., `Page.navigate`, `Runtime.evaluate`)
+3. Foxbridge translates each command to the equivalent Juggler or BiDi call
+4. Firefox executes the command
+5. Foxbridge translates the response back to CDP format
+
+The translation covers **13 CDP domains** with full method and event mapping:
+
+- **Target** — session management, browser contexts
+- **Page** — navigation, screenshots, PDF, lifecycle events
+- **Runtime** — JavaScript evaluation, function calls, object inspection
+- **Input** — mouse, keyboard, touch events
+- **Network** — cookies, user agent, request headers
+- **Emulation** — viewport, geolocation, timezone, locale
+- **DOM** — querySelector, getDocument, describeNode
+- **Fetch** — request interception (block, modify, fulfill)
+- **Performance** — page timing metrics
+- **Accessibility** — full AX tree
+- **IO** — PDF stream reading
+- **Console** — console.log event forwarding
+- **Browser** — version info, context management
+
+## Two Backends
+
+Foxbridge supports two Firefox protocols:
+
+### Juggler Backend (default)
+For Camoufox and Playwright-compatible Firefox builds. Uses pipe transport (FD 3/4) with null-byte framed JSON. **74/74 Puppeteer tests passing.**
+
+```bash
+foxbridge --binary /path/to/camoufox --port 9222 --headless
+```
+
+### WebDriver BiDi Backend
+For standard Firefox 129+. Uses WebSocket transport to Firefox's native BiDi endpoint. **62/62 Puppeteer tests passing.**
+
+```bash
+foxbridge --backend bidi --binary /path/to/firefox --port 9222 --bidi-port 9224 --headless
+```
+
+## CDP Discovery Endpoints
+
+Foxbridge serves the standard HTTP discovery endpoints that tools use to find the browser:
+
+```
+GET /json/version    → {"Browser": "Camoufox/146.0", "webSocketDebuggerUrl": "ws://..."}
+GET /json/list       → [{id, type, url, webSocketDebuggerUrl}]
+GET /json/new?url=.. → Creates a new page
+```
+
+## What About Native BiDi?
+
+Firefox 129+ supports WebDriver BiDi natively, but BiDi is a different protocol from CDP. Tools would need to be rewritten to use BiDi. Foxbridge lets existing CDP tools work immediately without any code changes.
+
+| | Foxbridge (CDP→Firefox) | Native BiDi |
+|---|---|---|
+| Existing Puppeteer code | Works unchanged | Requires rewrite |
+| OpenClaw | Works | Not supported |
+| Request interception | Full (Fetch domain) | Limited |
+| Performance metrics | Full | Not available |
+| Production ready | Yes | Emerging |
+
+---
+
+## See also
+
+- [Quick Start](/quick-start) — Install foxbridge and connect in 2 minutes
+- [CDP Domain Coverage](/cdp-coverage) — Full list of implemented methods
+- [BiDi Backend](/bidi-backend) — WebDriver BiDi backend details
+- [Juggler Backend](/juggler-backend) — Juggler backend details
+- [How-To Guides](/how-to) — Common tasks and recipes

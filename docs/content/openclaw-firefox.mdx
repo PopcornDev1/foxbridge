@@ -1,0 +1,105 @@
+---
+title: "OpenClaw with Firefox — Run AI Agents on Camoufox via Foxbridge"
+description: "Configure OpenClaw AI agents to use Firefox and Camoufox instead of Chrome. Foxbridge CDP proxy enables undetectable browser automation for AI agents."
+---
+
+# OpenClaw with Firefox
+
+[OpenClaw](https://github.com/openclaw-ai/openclaw) is an AI agent framework that controls browsers via CDP. By default, it uses Chrome — which is trivially detectable by anti-bot systems. With foxbridge, OpenClaw can use Camoufox (anti-detect Firefox) instead, with zero code changes.
+
+## Why Switch from Chrome?
+
+AI agents browsing the web with Chrome face immediate problems:
+
+1. **Detection**: Anti-bot systems (Cloudflare, DataDome, Akamai) fingerprint Chrome's automation markers. Headless Chrome is detected in milliseconds.
+2. **No stealth**: Chrome has no fingerprint spoofing. Every agent context looks identical — same WebGL hash, same canvas fingerprint, same user agent.
+3. **Memory**: Chrome uses 50-80MB per browser context. At scale (50+ agents), this becomes prohibitive.
+
+Camoufox solves all three: undetectable fingerprints, per-context identity, and 10-15MB per context.
+
+## Setup
+
+### 1. Install Foxbridge
+
+```bash
+go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+```
+
+### 2. Start Foxbridge with Camoufox
+
+```bash
+foxbridge --binary /path/to/camoufox --port 9222 --headless
+```
+
+### 3. Configure OpenClaw
+
+In your `openclaw.json`:
+
+```json
+{
+  "browser": {
+    "cdpUrl": "ws://127.0.0.1:9222",
+    "enabled": true,
+    "headless": true
+  }
+}
+```
+
+That's it. OpenClaw now browses through Camoufox. Every page visit, click, and form fill happens in an anti-detect Firefox context.
+
+## Multiple Agents with Different Fingerprints
+
+Each browser context created by OpenClaw gets a unique Camoufox fingerprint:
+
+```javascript
+// Agent 1 — unique UA, WebGL, canvas fingerprint
+const ctx1 = await browser.createBrowserContext();
+
+// Agent 2 — completely different identity
+const ctx2 = await browser.createBrowserContext();
+```
+
+The fingerprints come from BrowserForge — a Bayesian network trained on real browser populations. Each context gets:
+- Unique user agent string (OS-matched)
+- Unique screen resolution
+- Unique WebGL renderer/vendor (from a database of 147 GL parameters)
+- Unique canvas and audio fingerprint seeds
+- OS-matched font list
+
+## At Scale with VulpineOS
+
+For production deployments with many agents, [VulpineOS](https://vulpineos.com) provides a complete management layer:
+
+- **Embedded foxbridge** — one Camoufox process, one CDP server, hundreds of agents
+- **Context pool** — pre-warmed contexts for instant agent startup
+- **Per-agent identity** — fingerprints, proxies, cookies managed automatically
+- **Injection protection** — strips hidden DOM text that could hijack agent instructions
+- **Action Lock** — freezes pages during agent thinking to prevent mutation
+- **Cost tracking** — per-agent token budgets with alerts
+- **Web panel** — manage everything from a browser dashboard
+
+```bash
+# VulpineOS handles foxbridge automatically
+./vulpineos
+# OpenClaw agents connect via the embedded CDP server on :9222
+```
+
+## Comparison
+
+| | OpenClaw + Chrome | OpenClaw + Foxbridge + Camoufox |
+|---|---|---|
+| Bot detection | Detected immediately | Undetectable |
+| Fingerprints | All contexts identical | Unique per context |
+| Memory per context | ~50-80MB | ~10-15MB |
+| Setup | None (default) | `foxbridge --binary camoufox --port 9222` |
+| Injection protection | None | VulpineOS AX filter |
+
+---
+
+## See also
+
+- [Quick Start](/quick-start) — Install foxbridge in 2 minutes
+- [OpenClaw Integration](/openclaw) — Detailed configuration reference
+- [Camoufox CDP Bridge](/camoufox-cdp) — How CDP translation works for Camoufox
+- [VulpineOS Integration](/vulpineos) — Full agent management platform
+- [Foxbridge vs Alternatives](/comparison) — Comparison with other approaches

@@ -1,0 +1,98 @@
+---
+title: "Camoufox CDP Bridge — Use Chrome DevTools Protocol with Camoufox"
+description: "Foxbridge provides full CDP support for Camoufox anti-detect browser. Run Puppeteer, OpenClaw, and any CDP tool with undetectable Firefox fingerprints."
+---
+
+# Camoufox CDP Bridge
+
+[Camoufox](https://github.com/daijro/camoufox) is a hardened Firefox fork with per-context fingerprint spoofing — unique user agent, screen resolution, WebGL parameters, canvas/audio seeds, and OS-matched fonts per browser context. But Camoufox speaks Juggler, not CDP. Most automation tools (Puppeteer, OpenClaw, browser-use) only speak CDP.
+
+Foxbridge bridges this gap.
+
+## How It Works
+
+```
+Puppeteer / OpenClaw / browser-use
+  │ CDP (Chrome DevTools Protocol)
+  ▼
+foxbridge (translation layer)
+  │ Juggler (Firefox protocol)
+  ▼
+Camoufox (anti-detect Firefox)
+```
+
+Foxbridge accepts standard CDP WebSocket connections on port 9222 and translates every command to Camoufox's Juggler protocol via pipe transport (FD 3/4). The translation is invisible — tools think they're talking to Chrome.
+
+## Quick Setup
+
+```bash
+# Install foxbridge
+go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+
+# Start with Camoufox
+foxbridge --binary /path/to/camoufox --port 9222 --headless
+```
+
+## Use with Puppeteer
+
+```javascript
+const browser = await puppeteer.connect({
+  browserWSEndpoint: 'ws://127.0.0.1:9222/devtools/browser/foxbridge',
+});
+const page = await browser.newPage();
+await page.goto('https://bot.sannysoft.com'); // passes all checks
+```
+
+## Use with OpenClaw
+
+```json
+{
+  "browser": {
+    "cdpUrl": "ws://127.0.0.1:9222",
+    "enabled": true,
+    "headless": true
+  }
+}
+```
+
+## Per-Context Fingerprints
+
+Each browser context in Camoufox gets a unique fingerprint from the BrowserForge pipeline:
+
+- **User agent** — OS-matched, real browser version strings
+- **Screen resolution** — realistic dimensions matching the OS
+- **WebGL** — 147 GL parameters from a real GPU database
+- **Canvas/audio** — unique seeds per context
+- **Fonts** — OS-matched font lists
+- **Navigator properties** — platform, hardwareConcurrency, deviceMemory
+
+With foxbridge, you create contexts via standard CDP:
+
+```javascript
+const ctx1 = await browser.createBrowserContext(); // Fingerprint A
+const ctx2 = await browser.createBrowserContext(); // Fingerprint B
+// Different cookies, storage, and fingerprints
+```
+
+## Why Not Just Use Chrome?
+
+| | Camoufox + Foxbridge | Chrome |
+|---|---|---|
+| Bot detection | Undetectable | Trivially detectable |
+| Per-context fingerprints | Unique UA, WebGL, canvas per context | No — all tabs identical |
+| Memory per context | ~10-15MB | ~50-80MB |
+| Automation markers | None (`navigator.webdriver = false` at C++ level) | `$cdc_`, HeadlessChrome UA |
+| CDP support | Full via foxbridge (74/74 tests) | Native |
+
+## At Scale with VulpineOS
+
+For running hundreds of agents, [VulpineOS](https://vulpineos.com) embeds foxbridge directly — one Camoufox process, one foxbridge CDP server, hundreds of isolated contexts with unique fingerprints. No separate processes needed.
+
+---
+
+## See also
+
+- [Quick Start](/quick-start) — Install and connect in 2 minutes
+- [Foxbridge vs Alternatives](/comparison) — Detailed comparison table
+- [Context Management](/context-management) — How context isolation works
+- [VulpineOS Integration](/vulpineos) — Embedded mode for scale

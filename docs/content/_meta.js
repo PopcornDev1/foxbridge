@@ -33,6 +33,14 @@ export default {
   'vulpineos': 'VulpineOS',
   'puppeteer': 'Puppeteer',
   'openclaw': 'OpenClaw',
+  '---guides': {
+    title: 'Guides',
+    type: 'separator',
+  },
+  'puppeteer-firefox-setup': 'Puppeteer + Firefox Setup',
+  'camoufox-cdp': 'Camoufox CDP Bridge',
+  'firefox-cdp-support': 'Firefox CDP Support',
+  'openclaw-firefox': 'OpenClaw + Firefox',
   '---reference': {
     title: 'Reference',
     type: 'separator',
