@@ -1,0 +1,796 @@
+# Foxbridge — Complete Technical Reference
+
+> CDP-to-Firefox Protocol Proxy — via Juggler and WebDriver BiDi
+
+Foxbridge translates Chrome DevTools Protocol (CDP) into Firefox's native automation protocols. Any tool built for Chrome — Puppeteer, OpenClaw, browser-use — can control Firefox-based browsers like Camoufox without modification.
+
+- Documentation: https://foxbridge.vulpineos.com
+- Repository: https://github.com/PopcornDev1/foxbridge
+- Install: `go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest`
+
+## The Problem Foxbridge Solves
+
+AI agent tools (OpenClaw, Puppeteer, browser-use) speak CDP — Chrome's automation protocol. Firefox uses completely different protocols (Juggler and WebDriver BiDi). Without foxbridge, agents can't use anti-detect Firefox browsers like Camoufox. They're stuck with Chrome, which is trivially detectable by anti-bot systems.
+
+Foxbridge eliminates this gap: it presents a standard CDP WebSocket that looks exactly like Chrome to the client, but translates every command to Firefox.
+
+## Quick Start
+
+### Installation
+
+```bash
+go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+```
+
+### With Camoufox (Juggler backend)
+
+```bash
+foxbridge --binary /path/to/camoufox --port 9222 --headless
+```
+
+### With Firefox (BiDi backend)
+
+```bash
+foxbridge --backend bidi --binary /path/to/firefox --port 9222 --bidi-port 9224 --headless
+```
+
+### Connect with Puppeteer
+
+```javascript
+const puppeteer = require('puppeteer-core');
+const browser = await puppeteer.connect({
+  browserWSEndpoint: 'ws://127.0.0.1:9222/devtools/browser/foxbridge',
+  defaultViewport: null,
+});
+const page = await browser.newPage();
+await page.goto('https://example.com');
+console.log(await page.title());
+await page.screenshot({ path: 'screenshot.png' });
+await browser.disconnect();
+```
+
+### Connect with OpenClaw
+
+In your openclaw.json:
+```json
+{
+  "browser": {
+    "cdpUrl": "ws://127.0.0.1:9222",
+    "enabled": true,
+    "headless": true
+  }
+}
+```
+
+### Embedded Mode (VulpineOS)
+
+When used inside VulpineOS, foxbridge runs as an embedded Go library — no separate process:
+
+```go
+import (
+    "github.com/PopcornDev1/foxbridge/pkg/bridge"
+    "github.com/PopcornDev1/foxbridge/pkg/cdp"
+)
+sessions := cdp.NewSessionManager()
+server := cdp.NewServer(9222, handler, sessions)
+b := bridge.New(jugglerBackend, sessions, server)
+b.SetupEventSubscriptions()
+```
+
+## Architecture
+
+Foxbridge is a protocol proxy with four layers: a CDP WebSocket server, a bridge router, domain handlers, and a backend abstraction.
+
+```
+CDP Client (Puppeteer, OpenClaw, etc.)
+  |
+  v WebSocket (ws://localhost:9222/devtools/browser/foxbridge)
++----------------------------------------------------------+
+|  CDP Server (pkg/cdp/server.go)                          |
+|    Accepts WS connections, HTTP discovery (/json/version)|
++----------------------------------------------------------+
+|  Session Manager (pkg/cdp/session.go)                    |
+|    3-way index: CDP sessionID <-> Juggler sessionID <->  |
+|    targetID. Tracks URL, frameID, browserContextID       |
++----------------------------------------------------------+
+|  Bridge Router (pkg/bridge/bridge.go)                    |
+|    Dispatches by domain prefix -> domain handler         |
++----------------------------------------------------------+
+|  Domain Handlers                                         |
+|    target.go  page.go  runtime.go  input.go  network.go |
+|    emulation.go  dom.go  fetch.go  events.go  stub.go   |
++----------------------------------------------------------+
+|  Backend Interface (pkg/backend/backend.go)              |
+|    Call(sessionID, method, params) -> (result, error)    |
+|    Subscribe(event, handler)                             |
+|    Close()                                               |
++----------------------------------------------------------+
+  |
+  v Pipe FD 3/4 (Juggler) or WebSocket (BiDi)
++----------------------------------------------------------+
+|  Firefox / Camoufox                                      |
++----------------------------------------------------------+
+```
+
+### Message Flow
+
+1. CDP Server receives the WebSocket frame and parses the JSON Message (id, method, params, sessionID).
+2. Bridge.HandleMessage matches the domain prefix and calls the domain handler.
+3. Domain handler translates CDP params to Juggler params, resolves the CDP session to a Juggler session via resolveSession(), and calls callJuggler().
+4. Backend.Call sends the translated message over the pipe (Juggler) or WebSocket (BiDi), waits for the response, and returns it.
+5. Domain handler transforms the Juggler response into CDP format and returns it.
+6. Bridge.HandleMessage wraps the result into a CDP response with the original message ID and sends it back.
+
+### Domain Routing
+
+| Prefix | Handler | File |
+|--------|---------|------|
+| Target.* | handleTarget() | target.go |
+| Page.* | handlePage() | page.go |
+| Runtime.* | handleRuntime() | runtime.go |
+| Input.* | handleInput() | input.go |
+| Network.* | handleNetwork() | network.go |
+| Emulation.* | handleEmulation() | emulation.go |
+| DOM.* | handleDOM() | dom.go |
+| Fetch.* | handleFetch() | fetch.go |
+| Performance.* | handlePerformance() | performance.go |
+| IO.* | handleIO() | io.go |
+| Accessibility.* | handleAccessibility() | accessibility.go |
+| Console.* | handleConsole() | console.go |
+| Everything else | handleStub() | stub.go |
+
+### Backend Abstraction
+
+```go
+type Backend interface {
+    Call(sessionID, method string, params json.RawMessage) (json.RawMessage, error)
+    Subscribe(event string, handler EventHandler)
+    Close() error
+}
+```
+
+Two implementations:
+- Juggler (pkg/backend/juggler/) -- pipe transport over FD 3/4 with null-byte framing. Used with Camoufox.
+- BiDi (pkg/backend/bidi/) -- WebSocket transport using WebDriver BiDi protocol. Used with stock Firefox.
+
+### Shared State
+
+The bridge maintains concurrent-safe maps: ctxMap (CDP to Juggler context IDs), latestCtx (most recent context per session), isolatedWorlds (for re-emission after navigation), nodeObjects (backendNodeId to objectId), lastQuery (pending $eval selectors), loaderMap (loader IDs), lastDialog (dialog IDs), and pdfStreams (PDF IO handles).
+
+## CDP Domain Coverage — Full Method Reference
+
+### Target Domain
+
+| Method | Juggler Mapping |
+|--------|----------------|
+| setDiscoverTargets | No-op (Juggler auto-discovers) |
+| setAutoAttach | Emits pending attachedToTarget events |
+| createTarget | Browser.newPage |
+| closeTarget | Page.close |
+| createBrowserContext | Browser.createBrowserContext |
+| disposeBrowserContext | Browser.removeBrowserContext |
+| getTargets | Session manager enumeration |
+| attachToTarget | Emit page attachment pair |
+| activateTarget | No-op |
+| getBrowserContexts | Session manager enumeration |
+| getTargetInfo | Session lookup |
+
+### Page Domain
+
+| Method | Notes |
+|--------|-------|
+| navigate | Maps loaderId from Juggler navigationId |
+| reload | Synthetic lifecycle events emitted |
+| close | Proactive targetDestroyed emission |
+| captureScreenshot | Clip/format/quality support |
+| printToPDF | Returns IO stream handle for Puppeteer v24+ |
+| getFrameTree | Built from session state |
+| createIsolatedWorld | Tracked for re-emission on navigation |
+| setContent | Via Runtime.evaluate with document.open/write/close |
+| getLayoutMetrics | Via JS document.documentElement measurements |
+| addScriptToEvaluateOnNewDocument | Pass-through |
+| removeScriptToEvaluateOnNewDocument | Pass-through |
+| handleJavaScriptDialog | Dialog ID tracking |
+| setBypassCSP | No-op |
+| bringToFront | No-op |
+| stopLoading | No-op |
+| getNavigationHistory | Via JS history.length |
+| setExtraHTTPHeaders | Browser.setExtraHTTPHeaders |
+| setDownloadBehavior | No-op |
+| getResourceTree | Minimal frame tree |
+| setLifecycleEventsEnabled | No-op (always enabled) |
+
+### Runtime Domain
+
+| Method | Notes |
+|--------|-------|
+| evaluate | awaitPromise via async IIFE wrapping |
+| callFunctionOn | objectId pass-through, $eval combine |
+| getProperties | Runtime.getObjectProperties |
+| releaseObject | Runtime.disposeObject |
+| releaseObjectGroup | No-op |
+| addBinding | No-op |
+| discardConsoleEntries | No-op |
+| runIfWaitingForDebugger | No-op |
+
+### DOM Domain
+
+| Method | Notes |
+|--------|-------|
+| getDocument | Via document.documentElement evaluation |
+| querySelector | Returns nodeId with backendNodeId |
+| querySelectorAll | Returns array of nodeIds |
+| describeNode | Full node description with attributes |
+| resolveNode | Resolve backendNodeId to remote object |
+| getBoxModel | Element bounding rect |
+| getContentQuads | Element quad coordinates |
+| getOuterHTML | Element outer HTML |
+| getAttributes | Element attributes array |
+| scrollIntoViewIfNeeded | element.scrollIntoView() |
+| focus | element.focus() |
+| setFileInputFiles | File input injection |
+| removeNode | element.remove() |
+| setAttributeValue | element.setAttribute() |
+
+### Input Domain
+
+| Method | Juggler Method |
+|--------|---------------|
+| dispatchMouseEvent | Page.dispatchMouseEvent |
+| dispatchKeyEvent | Page.dispatchKeyEvent |
+| insertText | Page.insertText |
+| dispatchTouchEvent | Page.dispatchTouchEvent |
+
+### Network Domain
+
+| Method | Juggler Method |
+|--------|---------------|
+| setCookies | Browser.setCookies |
+| getCookies | Browser.getCookies |
+| deleteCookies | Browser.clearCookies (filtered) |
+| clearBrowserCookies | Browser.clearCookies |
+| setExtraHTTPHeaders | Browser.setExtraHTTPHeaders |
+| setRequestInterception | Browser.setRequestInterception |
+| setUserAgentOverride | Browser.setUserAgentOverride |
+| setCacheDisabled | No-op |
+| emulateNetworkConditions | No-op |
+| getResponseBody | Pass-through |
+
+### Fetch Domain (Request Interception)
+
+| Method | Juggler Method |
+|--------|---------------|
+| enable | Browser.setRequestInterception |
+| disable | Browser.setRequestInterception(false) |
+| continueRequest | Browser.continueInterceptedRequest |
+| fulfillRequest | Browser.fulfillInterceptedRequest |
+| failRequest | Browser.abortInterceptedRequest |
+| getResponseBody | Browser.getResponseBody |
+| continueWithAuth | Browser.handleAuthRequest |
+| continueResponse | Browser.continueInterceptedRequest |
+
+Error reason mapping for Fetch.failRequest:
+| CDP ErrorReason | Juggler Code |
+|----------------|-------------|
+| Failed | failed |
+| Aborted | aborted |
+| TimedOut | timedout |
+| AccessDenied | accessdenied |
+| ConnectionRefused | connectionrefused |
+| NameNotResolved | namenotresolved |
+| InternetDisconnected | internetdisconnected |
+| BlockedByClient | blockedbyclient |
+| BlockedByResponse | blockedbyresponse |
+
+### Emulation Domain
+
+| Method | Notes |
+|--------|-------|
+| setGeolocationOverride | Browser.setGeolocationOverride |
+| setUserAgentOverride | Browser.setUserAgentOverride |
+| setTimezoneOverride | Browser.setTimezoneOverride |
+| setLocaleOverride | Browser.setLocaleOverride |
+| setDeviceMetricsOverride | Browser.setDefaultViewport |
+| setTouchEmulationEnabled | Browser.setTouchOverride |
+| setEmulatedMedia | Page.setEmulatedMedia |
+| setScrollbarsHidden | No-op |
+| setDefaultBackgroundColorOverride | No-op |
+| setScriptExecutionDisabled | Via docShell.allowJavascript toggle |
+
+### Other Implemented Domains
+
+| Domain | Methods |
+|--------|---------|
+| Accessibility | getFullAXTree |
+| Performance | getMetrics (via JS performance.timing) |
+| IO | read, close (PDF streaming) |
+| Console | enable, disable |
+| Browser | getVersion, close, getWindowForTarget, setWindowBounds |
+
+### Stub Domains (No-Op Success)
+
+These return {} for all methods: Debugger, Profiler, HeapProfiler, Memory, ServiceWorker, CacheStorage, IndexedDB, Log, Security, CSS, Overlay, DOMStorage, WebAuthn, Media, Audits, Inspector, Database, BackgroundService, Cast, DeviceAccess.
+
+Any .enable or .disable call on an unrecognized domain also returns success.
+
+## Event Translation — Full Reference
+
+### Target Events
+
+| Juggler Event | CDP Event(s) | Notes |
+|--------------|-------------|-------|
+| Browser.attachedToTarget | Target.attachedToTarget (x2) | Dual-session model: emits TAB then PAGE attachment |
+| Browser.detachedFromTarget | Target.targetDestroyed, Target.detachedFromTarget | Cleans up both tab and page sessions |
+
+### Navigation Events
+
+| Juggler Event | CDP Event(s) |
+|--------------|-------------|
+| Page.navigationCommitted | Page.lifecycleEvent (init, commit), Page.frameNavigated |
+| Page.eventFired (load) | Page.loadEventFired, Page.lifecycleEvent (load), Page.frameStoppedLoading |
+| Page.eventFired (DOMContentLoaded) | Page.domContentEventFired, Page.lifecycleEvent (DOMContentLoaded) |
+
+Foxbridge filters intermediate about:blank navigations that Juggler emits during redirects.
+
+### Execution Context Events
+
+| Juggler Event | CDP Event |
+|--------------|----------|
+| Runtime.executionContextCreated | Runtime.executionContextCreated |
+| Runtime.executionContextDestroyed | Runtime.executionContextDestroyed |
+| Runtime.executionContextsCleared | Runtime.executionContextsCleared |
+
+Context IDs are translated from Juggler's string IDs to CDP's numeric IDs via a bidirectional ctxMap.
+
+### Frame Events
+
+| Juggler Event | CDP Event |
+|--------------|----------|
+| Page.frameAttached | Page.frameAttached |
+| Page.frameDetached | Page.frameDetached |
+
+### Dialog Events
+
+| Juggler Event | CDP Event |
+|--------------|----------|
+| Page.dialogOpened | Page.javascriptDialogOpening |
+| Page.dialogClosed | Page.javascriptDialogClosed |
+
+### Console Events
+
+| Juggler Event | CDP Event |
+|--------------|----------|
+| Runtime.console | Runtime.consoleAPICalled |
+
+### Network Events
+
+| Juggler Event | CDP Event |
+|--------------|----------|
+| Network.requestWillBeSent | Network.requestWillBeSent |
+| Network.responseReceived | Network.responseReceived |
+| Network.requestFinished | Network.loadingFinished |
+| Network.requestFailed | Network.loadingFailed |
+| Browser.requestIntercepted | Fetch.requestPaused + Network.requestWillBeSent |
+
+WebSocket URLs (ws://, wss://) also trigger Network.webSocketCreated.
+
+### BiDi Event Translation
+
+| BiDi Event | Juggler Event |
+|-----------|--------------|
+| browsingContext.contextCreated | Browser.attachedToTarget |
+| browsingContext.contextDestroyed | Browser.detachedFromTarget |
+| browsingContext.navigationStarted | Page.navigationCommitted |
+| browsingContext.load | Page.eventFired (load) |
+| browsingContext.domContentLoaded | Page.eventFired (DOMContentLoaded) |
+| browsingContext.userPromptOpened | Page.dialogOpened |
+| browsingContext.userPromptClosed | Page.dialogClosed |
+| script.realmCreated | Runtime.executionContextCreated |
+| script.realmDestroyed | Runtime.executionContextDestroyed |
+
+## Session Model
+
+Foxbridge implements a dual-session model to match Chrome's internal architecture. Puppeteer expects two CDP sessions per browser tab — a tab session and a page session. Firefox has only one session per target, so foxbridge synthesizes the pair.
+
+### Session Pair Structure
+
+```
+Browser Session (no sessionID — browser-level)
+  |
+  +-- Tab Session (CDP sessionID: uuid-1)
+  |     type: "tab"
+  |     Handles: Target.setAutoAttach (emits page attachment)
+  |
+  +-- Page Session (CDP sessionID: uuid-2)
+        type: "page"
+        jugglerSessionId: actual-juggler-session
+        Handles: all content methods (evaluate, navigate, input)
+```
+
+Both sessions map to the same Juggler session internally.
+
+### Auto-Attach Flow
+
+1. Client sends Target.setAutoAttach on browser session (sessionID="")
+2. Foxbridge emits Target.attachedToTarget for the TAB (sessionId: uuid-1)
+3. Client sends Target.setAutoAttach on the TAB session (sessionID=uuid-1)
+4. Foxbridge emits Target.attachedToTarget for the PAGE (sessionId: uuid-2)
+5. Client uses uuid-2 for all page operations
+
+Targets arriving before setAutoAttach are queued and emitted retroactively.
+
+### Session Manager Indexes
+
+| Index | Key | Use |
+|-------|-----|-----|
+| sessions | CDP session ID | Primary lookup for all handlers |
+| targets | Target ID | Target.closeTarget, Target.getTargetInfo |
+| jugglerSessions | Juggler session ID | Event routing |
+
+### Target Destruction
+
+When a target closes, foxbridge emits Target.detachedFromTarget for the page session (on tab session), then for the tab session (on browser session), then Target.targetDestroyed for both target IDs, removes sessions, and cleans up autoAttach.pairs.
+
+### Browser Contexts
+
+Browser contexts are tracked on each SessionInfo. Cookie and emulation commands include browserContextId for per-context isolation.
+
+## Context Management
+
+### Context ID Translation
+
+CDP uses integer execution context IDs. Juggler uses opaque strings. Foxbridge allocates numeric IDs from a monotonic counter starting at 100.
+
+### Latest Context Tracking
+
+The latestCtx map stores the most recent Juggler execution context for each session. Navigation destroys all contexts and creates new ones; the latest context is always the correct one for new evaluations.
+
+### Isolated Worlds
+
+Puppeteer creates isolated execution contexts via Page.createIsolatedWorld for its utility functions (__puppeteer_utility_world__). Foxbridge tracks them in isolatedWorlds and re-emits them when a new default context appears after navigation.
+
+### The $eval Combine Pattern
+
+Puppeteer's $eval sends two sequential callFunctionOn calls. Juggler's object lifecycle can garbage-collect the element handle between calls. Foxbridge intercepts the pattern:
+
+1. When callFunctionOn contains cssQuerySelector, store the CSS selector
+2. The next non-internal callFunctionOn is combined into a single Runtime.evaluate:
+
+```javascript
+(function() {
+  const el = document.querySelector("h1");
+  return (userFunction)(el);
+})()
+```
+
+For $$eval, foxbridge skips 3 intermediate plumbing calls (iterator, collector, mapper) before combining.
+
+### Object ID Preservation
+
+DOM methods store objectId and backendNodeId in nodeObjects. When releaseObject is called, foxbridge checks nodeObjects first and skips the Juggler disposeObject call to prevent breaking element handle chains.
+
+## Juggler Backend
+
+The Juggler backend communicates with Camoufox (Firefox 146) via pipe file descriptors. 74/74 Puppeteer integration tests passing.
+
+### Pipe Transport
+
+Foxbridge spawns Camoufox with --remote-debugging-pipe which opens FD 3 (read) and FD 4 (write). Messages are JSON terminated by a null byte (\x00), matching Firefox's nsRemoteDebuggingPipe.cpp framing.
+
+The PipeTransport uses a buffered reader (bufio.ReaderSize 64KB) for FD 3 and a mutex-protected writer for FD 4.
+
+### Mouse Button Translation
+
+| CDP button | Juggler button | Juggler buttons (on mousedown) |
+|-----------|---------------|-------------------------------|
+| "left" | 0 | 1 |
+| "middle" | 1 | 4 |
+| "right" | 2 | 2 |
+| "none" | 0 | 0 |
+
+### Mouse Type Translation
+
+| CDP type | Juggler type |
+|---------|-------------|
+| mouseMoved | mousemove |
+| mousePressed | mousedown |
+| mouseReleased | mouseup |
+| mouseWheel | wheel |
+
+### Keyboard Type Translation
+
+| CDP type | Juggler type |
+|---------|-------------|
+| keyDown | keydown |
+| keyUp | keyup |
+| rawKeyDown | keydown |
+| char | keypress |
+
+### Touch ID Stripping
+
+CDP includes an id field in each touch point. Juggler rejects touch events with id present. Foxbridge strips id by destructuring and only forwarding x, y, radiusX, radiusY, and force.
+
+### awaitPromise Support
+
+Juggler's Runtime.evaluate does not support awaitPromise. Foxbridge wraps the expression in an async IIFE: `(async () => { return await (expr) })()`.
+
+## BiDi Backend
+
+WebDriver BiDi alternative backend. 62/62 integration tests passing on Firefox 148.
+
+The bidi.Client translates every Juggler-style method call into the equivalent BiDi command internally. The bridge layer never sees BiDi protocol.
+
+### BiDi Method Mapping
+
+| Juggler Method | BiDi Command |
+|---------------|-------------|
+| Browser.enable | session.new + session.subscribe |
+| Browser.newPage | browsingContext.create |
+| Browser.close | browser.close |
+| Browser.createBrowserContext | browser.createUserContext |
+| Browser.removeBrowserContext | browser.removeUserContext |
+| Browser.setCookies | storage.setCookie (per cookie) |
+| Browser.getCookies | storage.getCookies |
+| Browser.clearCookies | storage.deleteCookies |
+| Page.navigate | browsingContext.navigate |
+| Page.reload | browsingContext.reload |
+| Page.close | browsingContext.close |
+| Page.screenshot | browsingContext.captureScreenshot |
+| Page.printToPDF | browsingContext.print |
+| Page.dispatchMouseEvent | input.performActions (pointer) |
+| Page.dispatchKeyEvent | input.performActions (key) |
+| Page.insertText | input.performActions (key sequence) |
+| Runtime.evaluate | script.evaluate |
+| Runtime.callFunction | script.callFunction |
+| Accessibility.getFullAXTree | script.evaluate (DOM walker) |
+
+### Special Key Mapping (BiDi Unicode PUA)
+
+ArrowLeft -> \uE012, ArrowUp -> \uE013, ArrowDown -> \uE015, Home -> \uE011, End -> \uE010, Enter -> \uE006, Escape -> \uE00C, Backspace -> \uE003, Delete -> \uE017, PageUp -> \uE00E, F1 -> \uE031, F12 -> \uE03C, Tab -> \uE004, Shift -> \uE008, Control -> \uE009.
+
+### BiDi Cookie Format
+
+BiDi wraps cookie values in typed objects: `{name: "sid", value: {type: "string", value: "abc123"}}`. Foxbridge handles the conversion transparently.
+
+### BiDi Usage
+
+```bash
+foxbridge --backend bidi --binary /path/to/firefox --port 9222
+foxbridge --backend bidi --bidi-url ws://localhost:9224/session/abc123
+```
+
+## Request Interception
+
+Juggler handles request interception at the browser level, not the page level.
+
+Flow:
+1. Fetch.enable on page session -> foxbridge resolves browserContextId and calls Browser.setRequestInterception
+2. Juggler emits Browser.requestIntercepted -> foxbridge matches frameId to CDP page session, emits Fetch.requestPaused
+3. Fetch.continueRequest/fulfillRequest/failRequest -> translated to Browser equivalents
+
+When a request is intercepted, foxbridge emits Network.requestWillBeSent first (so Puppeteer has metadata), then Fetch.requestPaused.
+
+Fetch.getResponseBody returns UTF-8 text decoded (base64Encoded: false) or binary as-is (base64Encoded: true).
+
+On BiDi backend, request interception uses network.addIntercept with beforeRequestSent phase.
+
+## Performance Metrics
+
+Performance.getMetrics evaluates performance.timing in the page context:
+
+| Metric | Source |
+|--------|--------|
+| Timestamp | Date.now() / 1000 |
+| Documents | document.querySelectorAll('*').length |
+| Frames | window.frames.length |
+| JSEventListeners | Constant 0 |
+| DomContentLoaded | performance.timing |
+| NavigationStart | performance.timing |
+| DomInteractive | performance.timing |
+| FirstMeaningfulPaint | performance.timing.responseEnd |
+| TaskDuration | performance.now() / 1000 |
+| JSHeapUsedSize | performance.memory |
+| JSHeapTotalSize | performance.memory |
+
+## PDF Generation
+
+Page.printToPDF with IO stream support for Puppeteer v24+.
+
+Supported parameters: landscape, displayHeaderFooter, printBackground, scale, paperWidth, paperHeight, marginTop/Bottom/Left/Right, headerTemplate, footerTemplate, preferCSSPageSize, pageRanges.
+
+IO Stream protocol:
+1. Page.printToPDF returns {data, stream: "pdf-stream-123"}
+2. IO.read({handle}) returns {base64Encoded: true, data, eof: true}
+3. IO.close({handle}) cleans up
+
+On BiDi backend, Page.printToPDF maps to browsingContext.print.
+
+## Input Handling
+
+### Mouse Events
+
+CDP type mouseMoved/mousePressed/mouseReleased/mouseWheel maps to Juggler mousemove/mousedown/mouseup/wheel. Button names (left/middle/right/none) map to numeric values (0/1/2/0). Buttons bitmask: left=1, middle=4, right=2 (only on mousedown).
+
+Additional fields passed through: x, y, clickCount, modifiers (Alt=1, Ctrl=2, Meta=4, Shift=8), deltaX/deltaY (wheel only).
+
+### Keyboard Events
+
+CDP keyDown/keyUp/rawKeyDown maps to Juggler keydown/keyup/keydown. CDP char maps to keypress. Fields: key, code, text (if non-empty), windowsVirtualKeyCode -> keyCode. Defaults added: location=0, repeat=false.
+
+### Touch Events
+
+CDP touch point id field is stripped (Juggler rejects it). Only x, y, radiusX, radiusY, force are forwarded. Optional fields only included when > 0.
+
+### insertText
+
+Maps directly to Page.insertText with no transformation.
+
+## Cookies and Storage
+
+All cookie operations scoped to browserContextId for multi-agent isolation.
+
+| CDP Method | Juggler Method |
+|-----------|---------------|
+| Network.setCookies | Browser.setCookies |
+| Network.getCookies | Browser.getCookies (returns all, no URL filter) |
+| Network.deleteCookies | Browser.clearCookies (clears all for context) |
+| Network.clearBrowserCookies | Browser.clearCookies |
+
+BiDi wraps cookie values in typed objects; foxbridge handles conversion transparently.
+
+## Device Emulation
+
+All emulation settings scoped to browserContextId.
+
+- Viewport: Emulation.setDeviceMetricsOverride -> Browser.setDefaultViewport (mobile flag not forwarded)
+- User Agent: Network.setUserAgentOverride or Emulation.setUserAgentOverride -> Browser.setUserAgentOverride
+- Geolocation: Emulation.setGeolocationOverride -> Browser.setGeolocationOverride (accuracy defaults to 1 if <= 0)
+- Timezone: Emulation.setTimezoneOverride -> Browser.setTimezoneOverride
+- Locale: Emulation.setLocaleOverride -> Browser.setLocaleOverride
+- Media: Emulation.setEmulatedMedia -> Page.setEmulatedMedia (CDP "media" field maps to Juggler "type")
+- Touch: Emulation.setTouchEmulationEnabled -> Browser.setTouchOverride
+- JS disable: Via docShell.allowJavascript toggle (best-effort)
+- No-ops: setScrollbarsHidden, setDefaultBackgroundColorOverride, clearDeviceMetricsOverride
+
+Different browser contexts can have completely different emulation profiles on the same Firefox process.
+
+## VulpineOS Integration
+
+Foxbridge is a core component of VulpineOS — operate stealth and secure OpenClaw agents at scale.
+
+Architecture: VulpineOS starts Camoufox with Juggler pipe, starts foxbridge pointing at same binary, writes CDP URL into openclaw.json. OpenClaw agents connect to ws://127.0.0.1:9222.
+
+```
+OpenClaw Agent -> CDP WebSocket -> foxbridge (port 9222) -> Juggler pipe -> Camoufox <- VulpineOS Kernel
+```
+
+Each agent gets its own browser context with: separate cookie jar, independent localStorage, per-context fingerprint, optional per-context proxy. VulpineOS context pool pre-warms 10 contexts, recycles after 50 uses (~10-15MB per context).
+
+Graceful fallback: if foxbridge binary not found, OpenClaw uses built-in Chrome.
+
+### VulpineOS MCP Bridge
+
+VulpineOS provides an MCP server with 9 browser tools: vulpine_navigate, vulpine_snapshot, vulpine_click, vulpine_type, vulpine_screenshot, vulpine_scroll, vulpine_new_context, vulpine_close_context, vulpine_get_ax_tree. vulpine_snapshot uses Phase 3's optimized DOM export for 50%+ token reduction.
+
+## CLI Reference
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --port | int | 9222 | CDP WebSocket server port |
+| --binary | string | auto-detect | Path to Firefox or Camoufox binary |
+| --headless | bool | false | Run browser in headless mode |
+| --profile | string | temporary | Firefox profile directory |
+| --backend | string | juggler | Backend protocol: juggler or bidi |
+| --bidi-url | string | none | BiDi WebSocket URL (skip browser launch) |
+| --bidi-port | int | 9223 | Port for BiDi WebSocket when auto-launching |
+
+### Binary Auto-Detection
+
+When --binary is not specified, foxbridge searches for: camoufox in $PATH, then platform-specific Firefox locations.
+
+### CDP Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| http://localhost:9222/json/version | Browser version info |
+| http://localhost:9222/json/list | Open targets/tabs |
+| ws://localhost:9222/devtools/browser/foxbridge | Browser-level WebSocket |
+
+## How-To Guides
+
+### Use Puppeteer with Firefox
+Install foxbridge, run with --binary pointing to Firefox or Camoufox, connect Puppeteer to ws://127.0.0.1:9222/devtools/browser/foxbridge.
+
+### Use OpenClaw with Camoufox
+Set "cdpUrl": "ws://127.0.0.1:9222" in openclaw.json. Start foxbridge, then run OpenClaw.
+
+### Enable CDP for Firefox 129+
+Run: foxbridge --backend bidi --binary /path/to/firefox --port 9222 --headless
+
+### Run Multiple Agents with Different Fingerprints
+Use browser.createBrowserContext() for isolated contexts. With VulpineOS, fingerprints are applied automatically per context.
+
+### Intercept and Modify Requests
+Use page.setRequestInterception(true) and listen for request events. Continue, abort, or fulfill.
+
+### Generate PDFs from Firefox
+Use page.pdf({ format: 'A4' }) after navigating.
+
+### Prevent Prompt Injection
+Use VulpineOS which strips hidden DOM nodes from the accessibility tree before the AI reads the page.
+
+## Foxbridge vs Alternatives
+
+### vs Native WebDriver BiDi
+Foxbridge: full Puppeteer (74/74 tests), full OpenClaw, full request interception, full performance metrics, Camoufox support. Native BiDi: experimental Puppeteer, no OpenClaw, limited interception, no performance metrics.
+
+### vs Playwright Firefox
+Playwright's Juggler diverged from Camoufox's. Playwright doesn't expose CDP. Foxbridge bridges CDP directly to Camoufox's Juggler.
+
+### vs Chrome/Chromium
+Camoufox via foxbridge: undetectable (BrowserForge fingerprints), per-context fingerprints, ~10-15MB per context, VulpineOS injection protection. Chrome: trivially detectable, no per-context fingerprints, ~50-80MB per context.
+
+## Testing
+
+| Category | Tests | Description |
+|----------|-------|-------------|
+| Go unit tests | 227 | Bridge translation, session management, CDP server |
+| Juggler integration | 74/74 | End-to-end with Camoufox 146 |
+| BiDi integration | 62/62 | End-to-end with Firefox 148 |
+
+Test files cover: bridge routing, page operations, runtime evaluation, DOM queries, input dispatch, network/cookies, request interception, emulation, event translation, target lifecycle, stub domains, accessibility, console events, session manager CRUD, WebSocket server.
+
+Run: `go test ./...` (unit), `go test -race ./...` (race detector), `cd tests && npm test` (integration, requires browser).
+
+## Repository Structure
+
+```
+foxbridge/
++-- cmd/foxbridge/main.go      # CLI entry point
++-- pkg/
+|   +-- backend/
+|   |   +-- backend.go         # Backend interface
+|   |   +-- juggler/           # Juggler pipe transport + client
+|   |   +-- bidi/              # BiDi WebSocket client
+|   +-- bridge/
+|   |   +-- bridge.go          # Main router + shared state
+|   |   +-- target.go through stub.go  # Domain handlers
+|   |   +-- *_test.go          # Unit tests per domain
+|   +-- cdp/
+|   |   +-- server.go          # WebSocket server + HTTP endpoints
+|   |   +-- session.go         # Session manager (3-way index)
+|   +-- firefox/               # Firefox process management
++-- tests/                     # Puppeteer integration tests
++-- docs/                      # Documentation site
+```
+
+## Contributing
+
+To add a new CDP domain: create pkg/bridge/yourdomain.go with handleYourDomain(), register the route in HandleMessage in bridge.go, write tests using the mockBackend.
+
+Style: one file per domain, use callJuggler() for backend calls, marshalResult() for responses, return json.RawMessage("{}") for no-ops, all shared state maps must be mutex-protected.
+
+## Common Questions
+
+**How do I enable CDP for Firefox?**
+Install foxbridge and run it pointing at your Firefox binary. It exposes a standard CDP WebSocket on port 9222.
+
+**Is there a Puppeteer Firefox CDP workaround?**
+Yes — foxbridge provides full CDP support for Firefox. Connect Puppeteer to foxbridge's WebSocket endpoint instead of Chrome.
+
+**How do I use Camoufox with Puppeteer?**
+Run foxbridge with `--binary /path/to/camoufox --port 9222`, then connect Puppeteer to `ws://localhost:9222/devtools/browser/foxbridge`.
+
+**Can I use OpenClaw with Firefox instead of Chrome?**
+Yes — configure `"cdpUrl": "ws://127.0.0.1:9222"` in your OpenClaw config. Foxbridge translates CDP to Firefox's Juggler protocol.
+
+**What is the Camoufox CDP bridge for high-scale agents?**
+Foxbridge + VulpineOS. VulpineOS manages hundreds of agents on a single Camoufox process, with foxbridge providing the CDP layer that OpenClaw needs.
+
+## Links
+
+- Documentation: https://foxbridge.vulpineos.com
+- Repository: https://github.com/PopcornDev1/foxbridge
+- VulpineOS: https://vulpineos.com
+- VulpineOS repo: https://github.com/PopcornDev1/VulpineOS
+- Install: go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
