@@ -1,4 +1,5 @@
 name: CI
+
 on:
   push:
     branches: [main]
@@ -6,16 +7,67 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  go:
+    name: Go build & test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-      - name: Build
-        run: go build ./...
+
+      - name: Check module tidiness
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum || (echo "go mod tidy changed files" && exit 1)
+
       - name: Vet
         run: go vet ./...
-      - name: Test
-        run: go test -race -v ./...
+
+      - name: Build (linux)
+        run: GOOS=linux GOARCH=amd64 go build -o foxbridge-linux ./cmd/foxbridge/
+
+      - name: Build (darwin)
+        run: GOOS=darwin GOARCH=arm64 go build -o foxbridge-darwin ./cmd/foxbridge/
+
+      - name: Binary size check
+        run: |
+          size=$(stat -c%s foxbridge-linux 2>/dev/null || stat -f%z foxbridge-linux)
+          echo "Binary size: $size bytes ($(echo "scale=1; $size/1048576" | bc)MB)"
+          if [ "$size" -gt 15728640 ]; then
+            echo "ERROR: Binary too large (>15MB)"
+            exit 1
+          fi
+
+      - name: Test with race detector
+        run: go test -race -v -count=1 ./... 2>&1 | tee test-output.txt
+
+      - name: Validate test count
+        run: |
+          count=$(grep -c "^--- PASS" test-output.txt || echo "0")
+          echo "Tests passing: $count"
+          if [ "$count" -lt 150 ]; then
+            echo "ERROR: Test count dropped below 150 (expected 227+)"
+            exit 1
+          fi
+
+  docs:
+    name: Docs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: docs
+        run: npm ci
+
+      - name: Build docs
+        working-directory: docs
+        run: npm run build
