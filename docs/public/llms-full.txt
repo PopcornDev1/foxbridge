@@ -791,6 +791,6 @@ Foxbridge + VulpineOS. VulpineOS manages hundreds of agents on a single Camoufox
 
 - Documentation: https://foxbridge.vulpineos.com
 - Repository: https://github.com/PopcornDev1/foxbridge
-- VulpineOS: https://vulpineos.com
+- VulpineOS: https://docs.vulpineos.com
 - VulpineOS repo: https://github.com/PopcornDev1/VulpineOS
 - Install: go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest

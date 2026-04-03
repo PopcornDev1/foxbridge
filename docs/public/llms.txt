@@ -65,7 +65,7 @@ Set `"cdpUrl": "ws://127.0.0.1:9222"` in your openclaw.json. Foxbridge translate
 
 Foxbridge is a core component of VulpineOS — the operating system for AI browser agents. In VulpineOS, foxbridge runs as an embedded CDP server sharing a single Camoufox instance with the kernel, enabling hundreds of OpenClaw agents to browse with unique fingerprints and zero detection.
 
-- VulpineOS: https://vulpineos.com
+- VulpineOS: https://docs.vulpineos.com
 - VulpineOS repo: https://github.com/PopcornDev1/VulpineOS
 
 ## Links
