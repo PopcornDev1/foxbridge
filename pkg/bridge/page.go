@@ -860,6 +860,42 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		}
 		return json.RawMessage(`{}`), nil
 
+	// VulpineOS-specific Juggler methods — pass through directly
+	case "Page.getOptimizedDOM":
+		result, err := b.callJuggler(msg.SessionID, "Page.getOptimizedDOM", msg.Params)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return result, nil
+
+	case "Page.resolveRef":
+		result, err := b.callJuggler(msg.SessionID, "Page.resolveRef", msg.Params)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return result, nil
+
+	case "Page.focusByRef":
+		result, err := b.callJuggler(msg.SessionID, "Page.focusByRef", msg.Params)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return result, nil
+
+	case "Page.setActionLock":
+		result, err := b.callJuggler(msg.SessionID, "Page.setActionLock", msg.Params)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return result, nil
+
+	case "Page.getShadowDOM":
+		result, err := b.callJuggler(msg.SessionID, "Page.getShadowDOM", msg.Params)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
+		return result, nil
+
 	default:
 		return nil, &cdp.Error{Code: -32601, Message: fmt.Sprintf("method not found: %s", msg.Method)}
 	}

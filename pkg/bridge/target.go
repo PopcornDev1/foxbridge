@@ -264,6 +264,18 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 	case "Target.activateTarget":
 		return json.RawMessage(`{}`), nil
 
+	case "Target.detachFromTarget":
+		// CDP session detach — just acknowledge, don't close the page
+		// Puppeteer calls this when CDPSession.detach() is called
+		var params struct {
+			SessionID string `json:"sessionId"`
+		}
+		if msg.Params != nil {
+			json.Unmarshal(msg.Params, &params)
+		}
+		log.Printf("[target] detachFromTarget: sessionId=%s (no-op, page stays open)", params.SessionID)
+		return json.RawMessage(`{}`), nil
+
 	case "Target.getBrowserContexts":
 		contexts := b.sessions.GetBrowserContexts()
 		if contexts == nil {
