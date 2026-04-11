@@ -108,6 +108,10 @@ func (b *Bridge) HandleMessage(conn *cdp.Connection, msg *cdp.Message) {
 		result, cdpErr = b.handlePerformance(conn, msg)
 	case strings.HasPrefix(method, "IO."):
 		result, cdpErr = b.handleIO(conn, msg)
+	case strings.HasPrefix(method, "CSS."):
+		result, cdpErr = b.handleCSS(conn, msg)
+	case strings.HasPrefix(method, "DOMStorage."):
+		result, cdpErr = b.handleDOMStorage(conn, msg)
 	default:
 		result, cdpErr = b.handleStub(conn, msg)
 	}

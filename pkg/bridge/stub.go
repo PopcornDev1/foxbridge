@@ -19,9 +19,7 @@ var stubDomains = map[string]bool{
 	"IndexedDB":     true,
 	"Log":           true,
 	"Security":      true,
-	"CSS":           true,
 	"Overlay":       true,
-	"DOMStorage":    true,
 	"WebAuthn":      true,
 	"Media":         true,
 	"Audits":        true,
@@ -61,6 +59,13 @@ func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			"userAgent":       info.UserAgent,
 			"jsVersion":       "",
 		})
+	}
+
+	// Browser.grantPermissions
+	if method == "Browser.grantPermissions" {
+		// Forward to Juggler if supported, otherwise no-op
+		_, _ = b.callJuggler("", "Browser.grantPermissions", msg.Params)
+		return mustMarshal(map[string]interface{}{}), nil
 	}
 
 	// Browser.close
