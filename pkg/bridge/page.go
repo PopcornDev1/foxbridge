@@ -596,6 +596,10 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		return json.RawMessage(`{}`), nil
 
 	case "Page.bringToFront":
+		_, err := b.callJuggler(msg.SessionID, "Page.bringToFront", nil)
+		if err != nil {
+			return nil, &cdp.Error{Code: -32000, Message: err.Error()}
+		}
 		return json.RawMessage(`{}`), nil
 
 	case "Page.stopLoading":

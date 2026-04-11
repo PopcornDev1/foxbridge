@@ -170,7 +170,6 @@ func TestHandlePage_NoopMethods(t *testing.T) {
 	noops := []string{
 		"Page.setInterceptFileChooserDialog",
 		"Page.setBypassCSP",
-		"Page.bringToFront",
 		"Page.stopLoading",
 		"Page.navigateToHistoryEntry",
 		"Page.resetNavigationHistory",
@@ -188,6 +187,39 @@ func TestHandlePage_NoopMethods(t *testing.T) {
 				t.Errorf("result = %s, want {}", string(result))
 			}
 		})
+	}
+}
+
+func TestHandlePage_BringToFront(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.bringToFront", json.RawMessage(`{}`), nil)
+
+	msg := &cdp.Message{ID: 1, Method: "Page.bringToFront", SessionID: "s1"}
+	result, cdpErr := b.handlePage(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+
+	calls := mb.CallsForMethod("Page.bringToFront")
+	if len(calls) == 0 {
+		t.Fatal("expected Page.bringToFront call to Juggler")
+	}
+}
+
+func TestHandlePage_BringToFront_Error(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Page.bringToFront", nil, fmt.Errorf("page not found"))
+
+	msg := &cdp.Message{ID: 1, Method: "Page.bringToFront", SessionID: "s1"}
+	_, cdpErr := b.handlePage(nil, msg)
+	if cdpErr == nil {
+		t.Fatal("expected error")
+	}
+	if cdpErr.Code != -32000 {
+		t.Errorf("error code = %d, want -32000", cdpErr.Code)
 	}
 }
 
