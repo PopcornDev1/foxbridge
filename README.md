@@ -8,13 +8,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/PopcornDev1/foxbridge/actions/workflows/ci.yml"><img src="https://github.com/PopcornDev1/foxbridge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/VulpineOS/foxbridge/actions/workflows/ci.yml"><img src="https://github.com/VulpineOS/foxbridge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
 <p align="center">
   <a href="https://foxbridge.vulpineos.com">Documentation</a> ·
-  <a href="https://github.com/PopcornDev1/VulpineOS">VulpineOS</a> ·
-  <a href="https://github.com/PopcornDev1/foxbridge/issues">Issues</a>
+  <a href="https://github.com/VulpineOS/VulpineOS">VulpineOS</a> ·
+  <a href="https://github.com/VulpineOS/foxbridge/issues">Issues</a>
 </p>
 
 ---
@@ -44,7 +44,7 @@ Firefox / Camoufox
 - **Anti-detect browsers** like [Camoufox](https://github.com/daijro/camoufox) are Firefox-based, but most AI agent tools only speak CDP
 - **No existing tool** bridges CDP to Firefox's automation protocols
 - **Dual backend**: Juggler (Playwright's protocol, production-ready) and WebDriver BiDi (W3C standard, future-proof)
-- **Part of [VulpineOS](https://github.com/PopcornDev1/VulpineOS)** — integrates automatically so OpenClaw agents use Camoufox instead of Chrome
+- **Part of [VulpineOS](https://github.com/VulpineOS/VulpineOS)** — integrates automatically so OpenClaw agents use Camoufox instead of Chrome
 
 ## Quick Start
 
@@ -130,7 +130,7 @@ type Backend interface {
 
 ## Embedded Mode (VulpineOS)
 
-When used inside [VulpineOS](https://github.com/PopcornDev1/VulpineOS), foxbridge runs as an embedded CDP server sharing a single Camoufox instance:
+When used inside [VulpineOS](https://github.com/VulpineOS/VulpineOS), foxbridge runs as an embedded CDP server sharing a single Camoufox instance:
 
 ```
 Kernel -> Camoufox (single process) -> Juggler pipe -> juggler.Client
