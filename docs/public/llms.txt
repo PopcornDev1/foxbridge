@@ -13,7 +13,7 @@ Foxbridge eliminates this gap: it presents a standard CDP WebSocket that looks e
 ## How to Use Puppeteer with Firefox
 
 ```bash
-go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+go install github.com/VulpineOS/foxbridge/cmd/foxbridge@latest
 foxbridge --binary /path/to/firefox --port 9222 --headless
 ```
 
@@ -66,13 +66,13 @@ Set `"cdpUrl": "ws://127.0.0.1:9222"` in your openclaw.json. Foxbridge translate
 Foxbridge is a core component of VulpineOS — the operating system for AI browser agents. In VulpineOS, foxbridge runs as an embedded CDP server sharing a single Camoufox instance with the kernel, enabling hundreds of OpenClaw agents to browse with unique fingerprints and zero detection.
 
 - VulpineOS: https://docs.vulpineos.com
-- VulpineOS repo: https://github.com/PopcornDev1/VulpineOS
+- VulpineOS repo: https://github.com/VulpineOS/VulpineOS
 
 ## Links
 
 - Documentation: https://foxbridge.vulpineos.com
-- Repository: https://github.com/PopcornDev1/foxbridge
-- npm/Go install: `go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest`
+- Repository: https://github.com/VulpineOS/foxbridge
+- npm/Go install: `go install github.com/VulpineOS/foxbridge/cmd/foxbridge@latest`
 
 ## Common Questions
 

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {
@@ -114,10 +114,10 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 
 	case "Emulation.setDeviceMetricsOverride":
 		var params struct {
-			Width             int  `json:"width"`
-			Height            int  `json:"height"`
+			Width             int     `json:"width"`
+			Height            int     `json:"height"`
 			DeviceScaleFactor float64 `json:"deviceScaleFactor"`
-			Mobile            bool `json:"mobile"`
+			Mobile            bool    `json:"mobile"`
 		}
 		if msg.Params != nil {
 			json.Unmarshal(msg.Params, &params)
@@ -164,8 +164,8 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 
 	case "Emulation.setEmulatedMedia":
 		var params struct {
-			Media    string                       `json:"media"`
-			Features []map[string]string          `json:"features"`
+			Media    string              `json:"media"`
+			Features []map[string]string `json:"features"`
 		}
 		if msg.Params != nil {
 			json.Unmarshal(msg.Params, &params)

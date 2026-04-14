@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func TestHandleCSS_Enable(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/PopcornDev1/foxbridge/pkg/backend"
+	"github.com/VulpineOS/foxbridge/pkg/backend"
 )
 
 // Verify Client implements backend.Backend at compile time.

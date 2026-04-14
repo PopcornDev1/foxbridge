@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func TestHandleTarget_SetDiscoverTargets(t *testing.T) {
@@ -366,7 +366,7 @@ func TestHandleTarget_GetBrowserContexts(t *testing.T) {
 	}
 
 	var res struct {
-		BrowserContextIDs      []string `json:"browserContextIds"`
+		BrowserContextIDs       []string `json:"browserContextIds"`
 		DefaultBrowserContextID string   `json:"defaultBrowserContextId"`
 	}
 	json.Unmarshal(result, &res)

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PopcornDev1/foxbridge/pkg/backend"
-	"github.com/PopcornDev1/foxbridge/pkg/backend/juggler"
+	"github.com/VulpineOS/foxbridge/pkg/backend"
+	"github.com/VulpineOS/foxbridge/pkg/backend/juggler"
 )
 
 // Config holds the Firefox launch configuration.
@@ -29,13 +29,13 @@ type Config struct {
 
 // Process manages a Firefox/Camoufox browser process.
 type Process struct {
-	cmd              *exec.Cmd
-	client           *juggler.Client
-	transport        *juggler.PipeTransport
-	bidiPort         int
+	cmd       *exec.Cmd
+	client    *juggler.Client
+	transport *juggler.PipeTransport
+	bidiPort  int
 	startedAt time.Time
-	waited           bool
-	mu               sync.Mutex
+	waited    bool
+	mu        sync.Mutex
 }
 
 // New creates a new Process instance without starting it.

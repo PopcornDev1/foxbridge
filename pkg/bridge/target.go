@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 	"github.com/google/uuid"
 )
 
@@ -101,7 +101,7 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 		// Juggler returns { targetId }
 		log.Printf("[target] Browser.newPage response: %s", string(result))
 		var pageResult struct {
-			TargetID  string `json:"targetId"`
+			TargetID string `json:"targetId"`
 		}
 		json.Unmarshal(result, &pageResult)
 
@@ -287,7 +287,7 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 			defaultCtxID = contexts[0]
 		}
 		return marshalResult(map[string]interface{}{
-			"browserContextIds":      contexts,
+			"browserContextIds":       contexts,
 			"defaultBrowserContextId": defaultCtxID,
 		})
 

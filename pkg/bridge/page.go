@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {
@@ -167,9 +167,9 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 
 	case "Page.captureScreenshot":
 		var params struct {
-			Format                string `json:"format"`
-			Quality               int    `json:"quality"`
-			Clip                  *struct {
+			Format  string `json:"format"`
+			Quality int    `json:"quality"`
+			Clip    *struct {
 				X      float64 `json:"x"`
 				Y      float64 `json:"y"`
 				Width  float64 `json:"width"`
@@ -260,15 +260,15 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		return marshalResult(map[string]interface{}{
 			"frameTree": map[string]interface{}{
 				"frame": map[string]interface{}{
-					"id":                frameID,
-					"loaderId":          "",
-					"url":               pageURL,
-					"securityOrigin":    "",
-					"mimeType":          "text/html",
-					"domainAndRegistry": "",
-					"secureContextType": "InsecureScheme",
+					"id":                             frameID,
+					"loaderId":                       "",
+					"url":                            pageURL,
+					"securityOrigin":                 "",
+					"mimeType":                       "text/html",
+					"domainAndRegistry":              "",
+					"secureContextType":              "InsecureScheme",
 					"crossOriginIsolatedContextType": "NotIsolated",
-					"gatedAPIFeatures": []string{},
+					"gatedAPIFeatures":               []string{},
 				},
 				"childFrames": []interface{}{},
 			},
@@ -446,20 +446,20 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			// Return sensible defaults
 			return marshalResult(map[string]interface{}{
 				"layoutViewport": map[string]interface{}{
-					"pageX":          0,
-					"pageY":          0,
-					"clientWidth":    1280,
-					"clientHeight":   720,
-				},
-				"visualViewport": map[string]interface{}{
-					"offsetX":  0,
-					"offsetY":  0,
-					"pageX":    0,
-					"pageY":    0,
+					"pageX":        0,
+					"pageY":        0,
 					"clientWidth":  1280,
 					"clientHeight": 720,
-					"scale":    1,
-					"zoom":     1,
+				},
+				"visualViewport": map[string]interface{}{
+					"offsetX":      0,
+					"offsetY":      0,
+					"pageX":        0,
+					"pageY":        0,
+					"clientWidth":  1280,
+					"clientHeight": 720,
+					"scale":        1,
+					"zoom":         1,
 				},
 				"contentSize": map[string]interface{}{
 					"x":      0,
@@ -472,10 +472,10 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 					"clientHeight": 720,
 				},
 				"cssVisualViewport": map[string]interface{}{
-					"offsetX": 0,
-					"offsetY": 0,
-					"pageX":   0,
-					"pageY":   0,
+					"offsetX":      0,
+					"offsetY":      0,
+					"pageX":        0,
+					"pageY":        0,
 					"clientWidth":  1280,
 					"clientHeight": 720,
 				},
@@ -525,8 +525,8 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 
 		return marshalResult(map[string]interface{}{
 			"layoutViewport": map[string]interface{}{
-				"pageX":       metrics.ScrollX,
-				"pageY":       metrics.ScrollY,
+				"pageX":        metrics.ScrollX,
+				"pageY":        metrics.ScrollY,
 				"clientWidth":  metrics.Width,
 				"clientHeight": metrics.Height,
 			},

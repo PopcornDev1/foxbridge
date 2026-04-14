@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/PopcornDev1/foxbridge/pkg/backend"
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/backend"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 // Bridge translates CDP messages to Juggler protocol calls.
@@ -35,16 +35,16 @@ type Bridge struct {
 	nodeObjects   map[int]string // backendNodeId → objectId
 	// lastQuerySelector tracks the last intercepted CSS selector per session
 	// so we can combine querySelector + userFn into a single evaluate for $eval
-	lastQueryMu      sync.RWMutex
-	lastQuery        map[string]string // cdpSessionID → CSS selector
-	lastQueryAll     map[string]bool   // cdpSessionID → true if querySelectorAll
-	lastQuerySkips   map[string]int    // cdpSessionID → remaining calls to skip before user fn
+	lastQueryMu    sync.RWMutex
+	lastQuery      map[string]string // cdpSessionID → CSS selector
+	lastQueryAll   map[string]bool   // cdpSessionID → true if querySelectorAll
+	lastQuerySkips map[string]int    // cdpSessionID → remaining calls to skip before user fn
 	// lastDialogID tracks the last dialog ID per CDP session for handleDialog
 	lastDialogMu sync.Mutex
 	lastDialog   map[string]string // cdpSessionID → dialogId
 	// pdfStreams stores PDF data for IO.read streaming
 	pdfStreamsMu sync.Mutex
-	pdfStreams    map[string]string // streamHandle → base64 data
+	pdfStreams   map[string]string // streamHandle → base64 data
 	// pendingContextClear tracks sessions that had executionContextsCleared.
 	// The next executionContextCreated should trigger isolated world re-emission.
 	pendingContextClearMu sync.Mutex
@@ -56,22 +56,22 @@ func New(b backend.Backend, sessions *cdp.SessionManager, server *cdp.Server, is
 	bidi := len(isBiDi) > 0 && isBiDi[0]
 	_ = bidi
 	return &Bridge{
-		backend:    b,
-		isBiDi:     bidi,
-		sessions:   sessions,
-		server:     server,
-		autoAttach: newAutoAttachState(),
-		ctxMap:         make(map[int]string),
-		ctxCounter:     100,
-		loaderMap:      make(map[string]string),
-		latestCtx:      make(map[string]string),
-		isolatedWorlds: make(map[string][]isolatedWorldInfo),
-		nodeObjects:    make(map[int]string),
+		backend:             b,
+		isBiDi:              bidi,
+		sessions:            sessions,
+		server:              server,
+		autoAttach:          newAutoAttachState(),
+		ctxMap:              make(map[int]string),
+		ctxCounter:          100,
+		loaderMap:           make(map[string]string),
+		latestCtx:           make(map[string]string),
+		isolatedWorlds:      make(map[string][]isolatedWorldInfo),
+		nodeObjects:         make(map[int]string),
 		lastQuery:           make(map[string]string),
 		lastQueryAll:        make(map[string]bool),
 		lastQuerySkips:      make(map[string]int),
 		lastDialog:          make(map[string]string),
-		pdfStreams:           make(map[string]string),
+		pdfStreams:          make(map[string]string),
 		pendingContextClear: make(map[string]bool),
 	}
 }

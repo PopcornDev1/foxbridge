@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func TestFetchEnable(t *testing.T) {
@@ -373,20 +373,20 @@ func TestFetchFulfillRequest_InvalidParams(t *testing.T) {
 
 func TestFetchFailRequest_AllErrorReasons(t *testing.T) {
 	reasons := map[string]string{
-		"Failed":              "failed",
-		"Aborted":             "aborted",
-		"TimedOut":            "timedout",
-		"AccessDenied":        "accessdenied",
-		"ConnectionClosed":    "connectionclosed",
-		"ConnectionReset":     "connectionreset",
-		"ConnectionRefused":   "connectionrefused",
-		"ConnectionAborted":   "connectionaborted",
-		"ConnectionFailed":    "connectionfailed",
-		"NameNotResolved":     "namenotresolved",
+		"Failed":               "failed",
+		"Aborted":              "aborted",
+		"TimedOut":             "timedout",
+		"AccessDenied":         "accessdenied",
+		"ConnectionClosed":     "connectionclosed",
+		"ConnectionReset":      "connectionreset",
+		"ConnectionRefused":    "connectionrefused",
+		"ConnectionAborted":    "connectionaborted",
+		"ConnectionFailed":     "connectionfailed",
+		"NameNotResolved":      "namenotresolved",
 		"InternetDisconnected": "internetdisconnected",
-		"AddressUnreachable":  "addressunreachable",
-		"BlockedByClient":     "blockedbyclient",
-		"BlockedByResponse":   "blockedbyresponse",
+		"AddressUnreachable":   "addressunreachable",
+		"BlockedByClient":      "blockedbyclient",
+		"BlockedByResponse":    "blockedbyresponse",
 	}
 
 	for cdpReason, wantCode := range reasons {

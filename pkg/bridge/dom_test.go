@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func TestHandleDOM_EnableDisable(t *testing.T) {
@@ -239,8 +239,8 @@ func TestHandleDOM_GetBoxModel_Fallback(t *testing.T) {
 
 	var res struct {
 		Model struct {
-			Width  int       `json:"width"`
-			Height int       `json:"height"`
+			Width   int       `json:"width"`
+			Height  int       `json:"height"`
 			Content []float64 `json:"content"`
 		} `json:"model"`
 	}

@@ -5,29 +5,29 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 // stubDomains are domains that return success no-ops.
 var stubDomains = map[string]bool{
-	"Debugger":      true,
-	"Profiler":      true,
-	"HeapProfiler":  true,
-	"Memory":        true,
-	"ServiceWorker": true,
-	"CacheStorage":  true,
-	"IndexedDB":     true,
-	"Log":           true,
-	"Security":      true,
-	"Overlay":       true,
-	"WebAuthn":      true,
-	"Media":         true,
-	"Audits":        true,
-	"Inspector":     true,
-	"Database":      true,
+	"Debugger":          true,
+	"Profiler":          true,
+	"HeapProfiler":      true,
+	"Memory":            true,
+	"ServiceWorker":     true,
+	"CacheStorage":      true,
+	"IndexedDB":         true,
+	"Log":               true,
+	"Security":          true,
+	"Overlay":           true,
+	"WebAuthn":          true,
+	"Media":             true,
+	"Audits":            true,
+	"Inspector":         true,
+	"Database":          true,
 	"BackgroundService": true,
-	"Cast":          true,
-	"DeviceAccess":  true,
+	"Cast":              true,
+	"DeviceAccess":      true,
 }
 
 func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {

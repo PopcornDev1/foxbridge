@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func TestToJSString(t *testing.T) {

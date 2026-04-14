@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func mustMarshal(v interface{}) json.RawMessage {
@@ -177,13 +177,13 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			isPuppeteerInternal = strings.Contains(funcDecl, "addPageBinding") ||
 				strings.Contains(funcDecl, "puppeteer_") ||
 				strings.Contains(funcDecl, "__ariaQuery") ||
-				strings.Contains(funcDecl, "yield* iterable") ||          // transposeIterableHandle
-				strings.Contains(funcDecl, "iterator.next()") ||          // fastTransposeIteratorHandle
-				strings.Contains(funcDecl, "element.isConnected") ||      // assertConnectedElement
-				strings.Contains(funcDecl, "instanceof SVGElement") ||    // asSVGElementHandle
-				strings.Contains(funcDecl, "IntersectionObserver") ||     // scrollIntoView/visibility
-				strings.Contains(funcDecl, "getClientRects") ||           // clickableBox
-				strings.Contains(funcDecl, "clientWidth") ||              // intersectBoundingBoxes
+				strings.Contains(funcDecl, "yield* iterable") || // transposeIterableHandle
+				strings.Contains(funcDecl, "iterator.next()") || // fastTransposeIteratorHandle
+				strings.Contains(funcDecl, "element.isConnected") || // assertConnectedElement
+				strings.Contains(funcDecl, "instanceof SVGElement") || // asSVGElementHandle
+				strings.Contains(funcDecl, "IntersectionObserver") || // scrollIntoView/visibility
+				strings.Contains(funcDecl, "getClientRects") || // clickableBox
+				strings.Contains(funcDecl, "clientWidth") || // intersectBoundingBoxes
 				strings.Contains(funcDecl, "checkVisibility")
 		}
 
@@ -344,7 +344,7 @@ func (b *Bridge) handleRuntime(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		// Build Juggler params AFTER all funcDecl transformations
 		jugglerParams := map[string]interface{}{
 			"functionDeclaration": funcDecl,
-			"returnByValue":      params.ReturnByValue,
+			"returnByValue":       params.ReturnByValue,
 		}
 		// awaitPromise is only supported by BiDi's script.callFunction, not Juggler
 		if b.isBiDi {

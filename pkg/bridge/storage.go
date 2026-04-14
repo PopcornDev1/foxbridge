@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func (b *Bridge) handleDOMStorage(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {

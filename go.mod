@@ -1,4 +1,4 @@
-module github.com/PopcornDev1/foxbridge
+module github.com/VulpineOS/foxbridge
 
 go 1.26.1
 

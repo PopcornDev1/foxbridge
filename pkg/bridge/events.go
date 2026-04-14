@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 	"github.com/google/uuid"
 )
 
@@ -609,11 +609,11 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 
 		b.emitEvent("Page.javascriptDialogOpening", map[string]interface{}{
-			"type":               ev.Type,
-			"message":            ev.Message,
-			"defaultPrompt":      ev.DefaultValue,
-			"hasBrowserHandler":  false,
-			"url":                "",
+			"type":              ev.Type,
+			"message":           ev.Message,
+			"defaultPrompt":     ev.DefaultValue,
+			"hasBrowserHandler": false,
+			"url":               "",
 		}, cdpSessionID)
 	})
 
@@ -635,13 +635,13 @@ func (b *Bridge) SetupEventSubscriptions() {
 	// Network.requestWillBeSent → Network.requestWillBeSent
 	b.backend.Subscribe("Network.requestWillBeSent", func(jugglerSessionID string, params json.RawMessage) {
 		var ev struct {
-			RequestID    string `json:"requestId"`
-			FrameID      string `json:"frameId"`
-			URL          string `json:"url"`
-			Method       string `json:"method"`
+			RequestID    string            `json:"requestId"`
+			FrameID      string            `json:"frameId"`
+			URL          string            `json:"url"`
+			Method       string            `json:"method"`
 			Headers      map[string]string `json:"headers"`
-			IsNavigation bool   `json:"isNavigationRequest"`
-			RedirectURL  string `json:"redirectedFrom"`
+			IsNavigation bool              `json:"isNavigationRequest"`
+			RedirectURL  string            `json:"redirectedFrom"`
 		}
 		if err := json.Unmarshal(params, &ev); err != nil {
 			return
@@ -673,8 +673,8 @@ func (b *Bridge) SetupEventSubscriptions() {
 		}
 
 		b.emitEvent("Network.requestWillBeSent", map[string]interface{}{
-			"requestId": ev.RequestID,
-			"loaderId":  ev.RequestID,
+			"requestId":   ev.RequestID,
+			"loaderId":    ev.RequestID,
 			"documentURL": ev.URL,
 			"request": map[string]interface{}{
 				"url":             ev.URL,
@@ -696,14 +696,14 @@ func (b *Bridge) SetupEventSubscriptions() {
 	// Network.responseReceived → Network.responseReceived
 	b.backend.Subscribe("Network.responseReceived", func(jugglerSessionID string, params json.RawMessage) {
 		var ev struct {
-			RequestID  string `json:"requestId"`
-			SecurityDetails json.RawMessage `json:"securityDetails"`
-			FromCache  bool   `json:"fromCache"`
-			Headers    map[string]string `json:"headers"`
-			Status     int    `json:"status"`
-			StatusText string `json:"statusText"`
-			URL        string `json:"url"`
-			FrameID    string `json:"frameId"`
+			RequestID       string            `json:"requestId"`
+			SecurityDetails json.RawMessage   `json:"securityDetails"`
+			FromCache       bool              `json:"fromCache"`
+			Headers         map[string]string `json:"headers"`
+			Status          int               `json:"status"`
+			StatusText      string            `json:"statusText"`
+			URL             string            `json:"url"`
+			FrameID         string            `json:"frameId"`
 		}
 		if err := json.Unmarshal(params, &ev); err != nil {
 			return
@@ -717,18 +717,18 @@ func (b *Bridge) SetupEventSubscriptions() {
 			"timestamp": 0,
 			"type":      "Document",
 			"response": map[string]interface{}{
-				"url":                ev.URL,
-				"status":             ev.Status,
-				"statusText":         ev.StatusText,
-				"headers":            ev.Headers,
-				"mimeType":           "",
-				"connectionReused":   false,
-				"connectionId":       0,
-				"encodedDataLength":  0,
-				"fromDiskCache":      ev.FromCache,
-				"fromServiceWorker":  false,
-				"fromPrefetchCache":  false,
-				"securityState":      "secure",
+				"url":               ev.URL,
+				"status":            ev.Status,
+				"statusText":        ev.StatusText,
+				"headers":           ev.Headers,
+				"mimeType":          "",
+				"connectionReused":  false,
+				"connectionId":      0,
+				"encodedDataLength": 0,
+				"fromDiskCache":     ev.FromCache,
+				"fromServiceWorker": false,
+				"fromPrefetchCache": false,
+				"securityState":     "secure",
 			},
 			"frameId": ev.FrameID,
 		}, cdpSessionID)
@@ -753,19 +753,19 @@ func (b *Bridge) SetupEventSubscriptions() {
 	// Network.requestFailed → Network.loadingFailed
 	b.backend.Subscribe("Network.requestFailed", func(jugglerSessionID string, params json.RawMessage) {
 		var ev struct {
-			RequestID    string `json:"requestId"`
-			ErrorCode    string `json:"errorCode"`
+			RequestID string `json:"requestId"`
+			ErrorCode string `json:"errorCode"`
 		}
 		json.Unmarshal(params, &ev)
 
 		cdpSessionID := b.resolveCDPSession(jugglerSessionID)
 
 		b.emitEvent("Network.loadingFailed", map[string]interface{}{
-			"requestId":    ev.RequestID,
-			"timestamp":    0,
-			"type":         "Document",
-			"errorText":    ev.ErrorCode,
-			"canceled":     false,
+			"requestId": ev.RequestID,
+			"timestamp": 0,
+			"type":      "Document",
+			"errorText": ev.ErrorCode,
+			"canceled":  false,
 		}, cdpSessionID)
 	})
 
@@ -864,9 +864,9 @@ func (b *Bridge) SetupEventSubscriptions() {
 				Method  string            `json:"method"`
 				Headers map[string]string `json:"headers"`
 			} `json:"request"`
-			FrameID              string `json:"frameId"`
-			IsNavigationRequest  bool   `json:"isNavigationRequest"`
-			ResourceType         string `json:"resourceType"`
+			FrameID             string `json:"frameId"`
+			IsNavigationRequest bool   `json:"isNavigationRequest"`
+			ResourceType        string `json:"resourceType"`
 		}
 		if err := json.Unmarshal(params, &ev); err != nil {
 			log.Printf("events: failed to parse Browser.requestIntercepted: %v", err)

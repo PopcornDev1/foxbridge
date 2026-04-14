@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	backendpkg "github.com/PopcornDev1/foxbridge/pkg/backend"
-	"github.com/PopcornDev1/foxbridge/pkg/backend/bidi"
-	"github.com/PopcornDev1/foxbridge/pkg/bridge"
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
-	"github.com/PopcornDev1/foxbridge/pkg/firefox"
+	backendpkg "github.com/VulpineOS/foxbridge/pkg/backend"
+	"github.com/VulpineOS/foxbridge/pkg/backend/bidi"
+	"github.com/VulpineOS/foxbridge/pkg/bridge"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/firefox"
 )
 
 func main() {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/PopcornDev1/foxbridge/pkg/backend"
+	"github.com/VulpineOS/foxbridge/pkg/backend"
 )
 
 // mockCall records a single backend.Call invocation.

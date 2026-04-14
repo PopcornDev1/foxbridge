@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func TestResolveCDPSession_Empty(t *testing.T) {

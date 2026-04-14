@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/PopcornDev1/foxbridge/pkg/backend"
+	"github.com/VulpineOS/foxbridge/pkg/backend"
 )
 
 // Compile-time check that Client implements backend.Backend.
@@ -356,8 +356,8 @@ func (c *Client) handleGetCookies(ctx context.Context, params json.RawMessage) (
 
 	var bidiResp struct {
 		Cookies []struct {
-			Name     string `json:"name"`
-			Value    struct {
+			Name  string `json:"name"`
+			Value struct {
 				Type  string `json:"type"`
 				Value string `json:"value"`
 			} `json:"value"`
@@ -765,11 +765,11 @@ func (c *Client) handleDispatchMouseEvent(ctx context.Context, sessionID string,
 		})
 	case "mousewheel", "wheel":
 		actions = append(actions, map[string]interface{}{
-			"type":    "scroll",
+			"type":   "scroll",
 			"x":      int(p.X),
 			"y":      int(p.Y),
-			"deltaX":  int(p.DeltaX),
-			"deltaY":  int(p.DeltaY),
+			"deltaX": int(p.DeltaX),
+			"deltaY": int(p.DeltaY),
 		})
 	}
 
@@ -1006,10 +1006,10 @@ func (c *Client) handleRuntimeGetObjectProperties(ctx context.Context, sessionID
 	lenExpr := `function() { return typeof this.length === 'number' ? this.length : Object.keys(this).length; }`
 	lenParams, _ := json.Marshal(map[string]interface{}{
 		"functionDeclaration": lenExpr,
-		"target":             map[string]interface{}{"context": bidiCtx},
-		"this":               map[string]interface{}{"handle": p.ObjectID},
-		"awaitPromise":       false,
-		"resultOwnership":    "none",
+		"target":              map[string]interface{}{"context": bidiCtx},
+		"this":                map[string]interface{}{"handle": p.ObjectID},
+		"awaitPromise":        false,
+		"resultOwnership":     "none",
 	})
 	lenResult, err := c.sendBiDi(ctx, "script.callFunction", lenParams)
 	if err != nil {
@@ -1033,10 +1033,10 @@ func (c *Client) handleRuntimeGetObjectProperties(ctx context.Context, sessionID
 		elemExpr := fmt.Sprintf(`function() { return this[%d]; }`, i)
 		elemParams, _ := json.Marshal(map[string]interface{}{
 			"functionDeclaration": elemExpr,
-			"target":             map[string]interface{}{"context": bidiCtx},
-			"this":               map[string]interface{}{"handle": p.ObjectID},
-			"awaitPromise":       false,
-			"resultOwnership":    "root",
+			"target":              map[string]interface{}{"context": bidiCtx},
+			"this":                map[string]interface{}{"handle": p.ObjectID},
+			"awaitPromise":        false,
+			"resultOwnership":     "root",
 		})
 		elemResult, err := c.sendBiDi(ctx, "script.callFunction", elemParams)
 		if err != nil {
@@ -1256,10 +1256,10 @@ func (c *Client) onContextCreated(params map[string]interface{}) {
 	jugglerParams, _ := json.Marshal(map[string]interface{}{
 		"sessionId": ctxID,
 		"targetInfo": map[string]interface{}{
-			"type":      "page",
-			"targetId":  ctxID,
+			"type":             "page",
+			"targetId":         ctxID,
 			"browserContextId": extractString(params, "userContext"),
-			"url":       extractString(params, "url"),
+			"url":              extractString(params, "url"),
 		},
 	})
 	c.emitJugglerEvent("Browser.attachedToTarget", "", jugglerParams)

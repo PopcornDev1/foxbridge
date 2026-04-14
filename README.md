@@ -49,7 +49,7 @@ Firefox / Camoufox
 ## Quick Start
 
 ```bash
-go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+go install github.com/VulpineOS/foxbridge/cmd/foxbridge@latest
 
 # Juggler backend (default)
 foxbridge --binary /path/to/camoufox --port 9222

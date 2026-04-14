@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func TestHandleRuntime_Enable(t *testing.T) {

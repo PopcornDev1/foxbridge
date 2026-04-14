@@ -5,14 +5,14 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 // mockConn is a minimal cdp.Connection that captures sent messages.
 type mockConn struct {
-	mu       sync.Mutex
-	sent     []*cdp.Message
-	sendErr  error
+	mu      sync.Mutex
+	sent    []*cdp.Message
+	sendErr error
 }
 
 func (mc *mockConn) lastSent() *cdp.Message {

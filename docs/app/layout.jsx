@@ -54,7 +54,7 @@ const logo = (
 const navbar = (
   <Navbar
     logo={logo}
-    projectLink="https://github.com/PopcornDev1/foxbridge"
+    projectLink="https://github.com/VulpineOS/foxbridge"
   />
 )
 
@@ -76,7 +76,7 @@ export default async function RootLayout({ children }) {
               applicationCategory: 'DeveloperApplication',
               operatingSystem: 'macOS, Linux',
               programmingLanguage: 'Go',
-              codeRepository: 'https://github.com/PopcornDev1/foxbridge',
+              codeRepository: 'https://github.com/VulpineOS/foxbridge',
               license: 'https://opensource.org/licenses/MIT',
               author: {
                 '@type': 'Person',
@@ -111,7 +111,7 @@ export default async function RootLayout({ children }) {
         <Layout
           navbar={navbar}
           pageMap={await getPageMap()}
-          docsRepositoryBase="https://github.com/PopcornDev1/foxbridge/tree/main/docs/content"
+          docsRepositoryBase="https://github.com/VulpineOS/foxbridge/tree/main/docs/content"
           footer={<></>}
           sidebar={{ defaultMenuCollapseLevel: 1 }}
         >

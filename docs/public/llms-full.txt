@@ -5,8 +5,8 @@
 Foxbridge translates Chrome DevTools Protocol (CDP) into Firefox's native automation protocols. Any tool built for Chrome — Puppeteer, OpenClaw, browser-use — can control Firefox-based browsers like Camoufox without modification.
 
 - Documentation: https://foxbridge.vulpineos.com
-- Repository: https://github.com/PopcornDev1/foxbridge
-- Install: `go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest`
+- Repository: https://github.com/VulpineOS/foxbridge
+- Install: `go install github.com/VulpineOS/foxbridge/cmd/foxbridge@latest`
 
 ## The Problem Foxbridge Solves
 
@@ -19,7 +19,7 @@ Foxbridge eliminates this gap: it presents a standard CDP WebSocket that looks e
 ### Installation
 
 ```bash
-go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+go install github.com/VulpineOS/foxbridge/cmd/foxbridge@latest
 ```
 
 ### With Camoufox (Juggler backend)
@@ -68,8 +68,8 @@ When used inside VulpineOS, foxbridge runs as an embedded Go library — no sepa
 
 ```go
 import (
-    "github.com/PopcornDev1/foxbridge/pkg/bridge"
-    "github.com/PopcornDev1/foxbridge/pkg/cdp"
+    "github.com/VulpineOS/foxbridge/pkg/bridge"
+    "github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 sessions := cdp.NewSessionManager()
 server := cdp.NewServer(9222, handler, sessions)
@@ -790,7 +790,7 @@ Foxbridge + VulpineOS. VulpineOS manages hundreds of agents on a single Camoufox
 ## Links
 
 - Documentation: https://foxbridge.vulpineos.com
-- Repository: https://github.com/PopcornDev1/foxbridge
+- Repository: https://github.com/VulpineOS/foxbridge
 - VulpineOS: https://docs.vulpineos.com
-- VulpineOS repo: https://github.com/PopcornDev1/VulpineOS
-- Install: go install github.com/PopcornDev1/foxbridge/cmd/foxbridge@latest
+- VulpineOS repo: https://github.com/VulpineOS/VulpineOS
+- Install: go install github.com/VulpineOS/foxbridge/cmd/foxbridge@latest

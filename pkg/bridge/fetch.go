@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {
@@ -52,12 +52,12 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 
 	case "Fetch.continueRequest":
 		var params struct {
-			RequestID          string            `json:"requestId"`
-			URL                string            `json:"url"`
-			Method             string            `json:"method"`
-			PostData           string            `json:"postData"`
-			Headers            []headerEntry     `json:"headers"`
-			InterceptResponse  bool              `json:"interceptResponse"`
+			RequestID         string        `json:"requestId"`
+			URL               string        `json:"url"`
+			Method            string        `json:"method"`
+			PostData          string        `json:"postData"`
+			Headers           []headerEntry `json:"headers"`
+			InterceptResponse bool          `json:"interceptResponse"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
@@ -89,12 +89,12 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 
 	case "Fetch.fulfillRequest":
 		var params struct {
-			RequestID       string        `json:"requestId"`
-			ResponseCode    int           `json:"responseCode"`
-			ResponseHeaders []headerEntry `json:"responseHeaders"`
-			BinaryResponseHeaders string  `json:"binaryResponseHeaders"`
-			Body            string        `json:"body"`
-			ResponsePhrase  string        `json:"responsePhrase"`
+			RequestID             string        `json:"requestId"`
+			ResponseCode          int           `json:"responseCode"`
+			ResponseHeaders       []headerEntry `json:"responseHeaders"`
+			BinaryResponseHeaders string        `json:"binaryResponseHeaders"`
+			Body                  string        `json:"body"`
+			ResponsePhrase        string        `json:"responsePhrase"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}
@@ -154,7 +154,7 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 
 	case "Fetch.continueWithAuth":
 		var params struct {
-			RequestID string `json:"requestId"`
+			RequestID             string `json:"requestId"`
 			AuthChallengeResponse struct {
 				Response string `json:"response"` // "Default", "CancelAuth", "ProvideCredentials"
 				Username string `json:"username"`
@@ -230,10 +230,10 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 		// Continue with modified response — allows response body interception.
 		// The response is forwarded to the page with optional modifications.
 		var params struct {
-			RequestID       string        `json:"requestId"`
-			ResponseCode    int           `json:"responseCode"`
-			ResponseHeaders []headerEntry `json:"responseHeaders"`
-			BinaryResponseHeaders string  `json:"binaryResponseHeaders"`
+			RequestID             string        `json:"requestId"`
+			ResponseCode          int           `json:"responseCode"`
+			ResponseHeaders       []headerEntry `json:"responseHeaders"`
+			BinaryResponseHeaders string        `json:"binaryResponseHeaders"`
 		}
 		if err := json.Unmarshal(msg.Params, &params); err != nil {
 			return nil, &cdp.Error{Code: -32602, Message: "invalid params"}

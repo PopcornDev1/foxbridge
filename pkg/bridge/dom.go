@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/PopcornDev1/foxbridge/pkg/cdp"
+	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
 func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMessage, *cdp.Error) {
@@ -236,8 +236,8 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 				}`
 				result, err := b.callJuggler(msg.SessionID, "Runtime.callFunction", map[string]interface{}{
 					"functionDeclaration": expr,
-					"objectId":           params.ObjectID,
-					"returnByValue":      true,
+					"objectId":            params.ObjectID,
+					"returnByValue":       true,
 				})
 				if err == nil {
 					var callResult struct {
@@ -308,8 +308,8 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 			}`
 			result, err := b.callJuggler(msg.SessionID, "Runtime.callFunction", map[string]interface{}{
 				"functionDeclaration": expr,
-				"objectId":           params.ObjectID,
-				"returnByValue":      true,
+				"objectId":            params.ObjectID,
+				"returnByValue":       true,
 			})
 			if err == nil {
 				var callResult struct {
@@ -451,8 +451,8 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 			}`
 			result, err := b.callJuggler(msg.SessionID, "Runtime.callFunction", map[string]interface{}{
 				"functionDeclaration": expr,
-				"objectId":           params.ObjectID,
-				"returnByValue":      true,
+				"objectId":            params.ObjectID,
+				"returnByValue":       true,
 			})
 			if err == nil {
 				var callResult struct {
@@ -559,8 +559,8 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 		if params.ObjectID != "" {
 			result, err := b.callJuggler(msg.SessionID, "Runtime.callFunction", map[string]interface{}{
 				"functionDeclaration": `function() { return this.outerHTML; }`,
-				"objectId":           params.ObjectID,
-				"returnByValue":      true,
+				"objectId":            params.ObjectID,
+				"returnByValue":       true,
 			})
 			if err == nil {
 				var callResult struct {
@@ -598,8 +598,8 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 			}`
 			result, err := b.callJuggler(msg.SessionID, "Runtime.callFunction", map[string]interface{}{
 				"functionDeclaration": expr,
-				"objectId":           params.ObjectID,
-				"returnByValue":      true,
+				"objectId":            params.ObjectID,
+				"returnByValue":       true,
 			})
 			if err == nil {
 				var callResult struct {
@@ -643,8 +643,8 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 		if params.ObjectID != "" {
 			b.callJuggler(msg.SessionID, "Runtime.callFunction", map[string]interface{}{
 				"functionDeclaration": `function() { this.scrollIntoViewIfNeeded(true); }`,
-				"objectId":           params.ObjectID,
-				"returnByValue":      true,
+				"objectId":            params.ObjectID,
+				"returnByValue":       true,
 			})
 		}
 		return json.RawMessage(`{}`), nil
@@ -662,8 +662,8 @@ func (b *Bridge) handleDOM(conn *cdp.Connection, msg *cdp.Message) (json.RawMess
 		if params.ObjectID != "" {
 			b.callJuggler(msg.SessionID, "Runtime.callFunction", map[string]interface{}{
 				"functionDeclaration": `function() { this.focus(); }`,
-				"objectId":           params.ObjectID,
-				"returnByValue":      true,
+				"objectId":            params.ObjectID,
+				"returnByValue":       true,
 			})
 		}
 		return json.RawMessage(`{}`), nil
