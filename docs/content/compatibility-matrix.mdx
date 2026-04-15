@@ -1,0 +1,91 @@
+---
+title: "Compatibility Matrix"
+description: "Supported foxbridge behavior across clients, backends, browser targets, CDP domains, and VulpineOS-specific passthrough methods."
+---
+
+# Compatibility Matrix
+
+This matrix answers a different question from the domain coverage page:
+not just "is a method implemented?", but "what works together in a real
+client/backend/browser combination?"
+
+## Browser targets
+
+| Target browser | Backend | Status | Notes |
+| --- | --- | --- | --- |
+| Camoufox / Playwright-style Firefox builds | Juggler | Recommended | Primary production path for VulpineOS |
+| Standard Firefox 129+ | BiDi | Supported | Uses native WebDriver BiDi endpoint |
+| Standard Firefox without usable BiDi endpoint | Juggler | Depends on build | Requires a Juggler-capable binary |
+
+## Client compatibility
+
+| Client/tool | Juggler backend | BiDi backend | Notes |
+| --- | --- | --- | --- |
+| Puppeteer | Supported | Supported | Juggler path has 74/74 Puppeteer tests, BiDi path has 62/62 |
+| OpenClaw | Supported | Partial / situational | VulpineOS embeds foxbridge primarily through the Juggler path |
+| chrome-remote-interface | Supported | Supported | Best for direct CDP method access |
+| browser-use / generic CDP clients | Supported | Supported | Depends on which CDP domains they require |
+
+## CDP domain status
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Target | Supported | Contexts, attachment, target lifecycle |
+| Page | Supported | Navigation, screenshots, frame tree, isolated worlds |
+| Runtime | Supported | Evaluate, callFunctionOn, properties, object lifecycle |
+| Input | Supported | Mouse, keyboard, touch |
+| Network | Supported | Cookies, headers, interception hooks, user agent |
+| Fetch | Supported | Continue, fulfill, fail, response body |
+| Emulation | Supported | Viewport, UA, geolocation, timezone, locale |
+| DOM | Supported | Query, describe, resolve, box model, focus, file inputs |
+| Accessibility | Supported | Full AX tree |
+| Performance | Supported | Page timing metrics |
+| IO | Supported | PDF stream reading |
+| Console | Supported | Console event forwarding |
+| Browser | Supported | Version info, close, basic window APIs |
+| Stub domains | No-op success | For client compatibility where real behavior is not required |
+
+For exact methods, see [CDP Domain Coverage](/cdp-coverage).
+
+## VulpineOS-specific passthrough methods
+
+| Method | foxbridge status | Browser requirement | Notes |
+| --- | --- | --- | --- |
+| `Page.getOptimizedDOM` | Forwarded | VulpineOS/Camoufox build with method present | Not standard CDP |
+| `Page.resolveRef` | Forwarded | VulpineOS/Camoufox build with method present | Ref-based interaction helper |
+| `Page.focusByRef` | Forwarded | VulpineOS/Camoufox build with method present | Ref-based focus helper |
+| `Page.setActionLock` | Forwarded | VulpineOS/Camoufox build with method present | Freezes page execution during reasoning |
+| `Page.getShadowDOM` | Forwarded | VulpineOS/Camoufox build with method present | Shadow-root inspection helper |
+| `Page.getAnnotatedScreenshot` | Not currently forwarded | N/A | Use VulpineOS MCP or direct Juggler |
+| `Page.secureSetInputValue` | Not currently forwarded | N/A | Private/extension workflows use direct Juggler path |
+| `Browser.startAudioCapture` | Not currently forwarded | N/A | Not exposed through foxbridge today |
+| `Browser.stopAudioCapture` | Not currently forwarded | N/A | Not exposed through foxbridge today |
+| `Browser.getAudioChunk` | Not currently forwarded | N/A | Not exposed through foxbridge today |
+
+For examples, see [VulpineOS Methods](/vulpine-methods).
+
+## Version expectations
+
+| Surface | Expected state |
+| --- | --- |
+| CDP client | Chrome-oriented client expecting normal discovery endpoints |
+| foxbridge | Current `main` / released build matching the docs site |
+| Camoufox / VulpineOS browser | Must contain the Juggler methods being forwarded |
+| Standard Firefox | Works through BiDi for standard CDP coverage, not VulpineOS-only passthrough methods |
+
+## Known limitations
+
+| Limitation | Impact |
+| --- | --- |
+| VulpineOS passthrough methods are not Chrome-standard CDP | Client code must treat them as product-specific extensions |
+| Not all Juggler methods are auto-forwarded | Unsupported methods return `method not found` |
+| Some domains are compatibility stubs only | Clients may connect successfully but not get real functionality for those domains |
+| VulpineOS-specific methods depend on the target browser build, not foxbridge alone | foxbridge can only forward what the browser actually implements |
+
+---
+
+## See also
+
+- [CDP Domain Coverage](/cdp-coverage)
+- [VulpineOS Methods](/vulpine-methods)
+- [VulpineOS](/vulpineos)

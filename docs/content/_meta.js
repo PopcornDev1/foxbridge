@@ -7,6 +7,7 @@ export default {
     type: 'separator',
   },
   'cdp-coverage': 'CDP Domain Coverage',
+  'compatibility-matrix': 'Compatibility Matrix',
   'event-translation': 'Event Translation',
   'session-model': 'Session Model',
   'context-management': 'Context Management',
