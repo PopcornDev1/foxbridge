@@ -23,8 +23,8 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			"enabled": true,
 		}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -39,8 +39,8 @@ func (b *Bridge) handleFetch(conn *cdp.Connection, msg *cdp.Message) (json.RawMe
 			"enabled": false,
 		}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 

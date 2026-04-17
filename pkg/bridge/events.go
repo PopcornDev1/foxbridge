@@ -64,6 +64,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 		targetID := ev.TargetInfo.TargetID
 		jugglerSessionID := ev.SessionID
 		targetType := ev.TargetInfo.Type
+		browserContextID := b.cdpBrowserContextID(ev.TargetInfo.BrowserContextID)
 
 		// Workers (worker/service_worker) use a single CDP session — no tab/page dual model.
 		if targetType == "worker" || targetType == "service_worker" {
@@ -72,7 +73,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 				SessionID:        workerSessionID,
 				JugglerSessionID: jugglerSessionID,
 				TargetID:         targetID,
-				BrowserContextID: ev.TargetInfo.BrowserContextID,
+				BrowserContextID: browserContextID,
 				URL:              ev.TargetInfo.URL,
 				Type:             targetType,
 			})
@@ -93,7 +94,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 						"url":              ev.TargetInfo.URL,
 						"attached":         true,
 						"canAccessOpener":  false,
-						"browserContextId": ev.TargetInfo.BrowserContextID,
+						"browserContextId": browserContextID,
 					},
 					"waitingForDebugger": false,
 				}, "")
@@ -110,7 +111,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 			tabTargetID:   tabTargetID,
 			pageSessionID: pageSessionID,
 			pageTargetID:  targetID,
-			browserCtxID:  ev.TargetInfo.BrowserContextID,
+			browserCtxID:  browserContextID,
 			url:           ev.TargetInfo.URL,
 		}
 
@@ -119,7 +120,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 			SessionID:        pageSessionID,
 			JugglerSessionID: jugglerSessionID,
 			TargetID:         targetID,
-			BrowserContextID: ev.TargetInfo.BrowserContextID,
+			BrowserContextID: browserContextID,
 			URL:              ev.TargetInfo.URL,
 			Type:             "page",
 		}
@@ -138,7 +139,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 			SessionID:        tabSessionID,
 			JugglerSessionID: "tab:" + jugglerSessionID,
 			TargetID:         tabTargetID,
-			BrowserContextID: ev.TargetInfo.BrowserContextID,
+			BrowserContextID: browserContextID,
 			URL:              ev.TargetInfo.URL,
 			Type:             "tab",
 		})

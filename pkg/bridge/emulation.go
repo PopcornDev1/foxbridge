@@ -21,8 +21,8 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 
 		jugglerParams := map[string]interface{}{}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 		if params.Latitude != nil {
@@ -55,8 +55,8 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 			"userAgent": params.UserAgent,
 		}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -78,8 +78,8 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 			"timezoneId": params.TimezoneID,
 		}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -101,8 +101,8 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 			"locale": params.Locale,
 		}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -131,8 +131,8 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 			jugglerParams["deviceScaleFactor"] = params.DeviceScaleFactor
 		}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -154,8 +154,8 @@ func (b *Bridge) handleEmulation(conn *cdp.Connection, msg *cdp.Message) (json.R
 			"enabled": params.Enabled,
 		}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 

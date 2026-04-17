@@ -124,6 +124,36 @@ func TestSetupEventSubscriptions_AttachedToTarget_Worker(t *testing.T) {
 	}
 }
 
+func TestSetupEventSubscriptions_AttachedToTarget_DefaultContext(t *testing.T) {
+	b, mb := newTestBridge()
+	b.SetupEventSubscriptions()
+
+	mb.mu.Lock()
+	handlers := mb.handlers["Browser.attachedToTarget"]
+	mb.mu.Unlock()
+
+	params := json.RawMessage(`{
+		"sessionId": "jug-default",
+		"targetInfo": {
+			"targetId": "t-default",
+			"type": "page",
+			"url": "about:blank"
+		}
+	}`)
+
+	handlers[0]("", params)
+
+	time.Sleep(10 * time.Millisecond)
+
+	info, ok := b.sessions.GetByTarget("t-default")
+	if !ok {
+		t.Fatal("expected session for default-context target")
+	}
+	if info.BrowserContextID != syntheticDefaultBrowserContextID {
+		t.Fatalf("browserContextId = %q, want %q", info.BrowserContextID, syntheticDefaultBrowserContextID)
+	}
+}
+
 func TestSetupEventSubscriptions_DetachedFromTarget(t *testing.T) {
 	b, mb := newTestBridge()
 	b.SetupEventSubscriptions()

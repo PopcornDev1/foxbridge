@@ -30,8 +30,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 
 		// Include browserContextId if we have a session with one.
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -52,8 +52,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		// Juggler's getCookies only accepts browserContextId — no URLs filter
 		jugglerParams := map[string]interface{}{}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -68,8 +68,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 		// Map to clearBrowserCookies as fallback (clears all for context)
 		jugglerParams := map[string]interface{}{}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 		b.callJuggler("", "Browser.clearCookies", jugglerParams)
@@ -78,8 +78,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 	case "Network.clearBrowserCookies":
 		jugglerParams := map[string]interface{}{}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -101,8 +101,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			"headers": params.Headers,
 		}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -124,8 +124,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 			"enabled": len(params.Patterns) > 0,
 		}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -147,8 +147,8 @@ func (b *Bridge) handleNetwork(conn *cdp.Connection, msg *cdp.Message) (json.Raw
 				"userAgent": params.UserAgent,
 			}
 			if msg.SessionID != "" {
-				if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-					jugglerUA["browserContextId"] = info.BrowserContextID
+				if info, ok := b.sessions.Get(msg.SessionID); ok {
+					b.setJugglerBrowserContext(jugglerUA, info.BrowserContextID)
 				}
 			}
 			b.callJuggler("", "Browser.setUserAgentOverride", jugglerUA)

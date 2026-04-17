@@ -46,6 +46,38 @@ func TestHandleTarget_SetDiscoverTargets_BlankURLForPage(t *testing.T) {
 	}
 }
 
+func TestHandleTarget_CreateTarget_StripsSyntheticDefaultContext(t *testing.T) {
+	b, mb := newTestBridge()
+	mb.SetResponse("", "Browser.newPage", json.RawMessage(`{"targetId":"page-1"}`), nil)
+
+	msg := &cdp.Message{
+		ID:     1,
+		Method: "Target.createTarget",
+		Params: json.RawMessage(`{"url":"about:blank","browserContextId":"` + syntheticDefaultBrowserContextID + `"}`),
+	}
+	result, cdpErr := b.handleTarget(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("unexpected error: %s", cdpErr.Message)
+	}
+
+	var res map[string]string
+	json.Unmarshal(result, &res)
+	if res["targetId"] != "page-1" {
+		t.Fatalf("targetId = %q, want page-1", res["targetId"])
+	}
+
+	calls := mb.CallsForMethod("Browser.newPage")
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 Browser.newPage call, got %d", len(calls))
+	}
+
+	var params map[string]interface{}
+	json.Unmarshal(calls[0].Params, &params)
+	if _, ok := params["browserContextId"]; ok {
+		t.Fatalf("expected synthetic default context to be stripped, got params %v", params)
+	}
+}
+
 func TestHandleTarget_SetAutoAttach_BrowserLevel(t *testing.T) {
 	b, _ := newTestBridge()
 

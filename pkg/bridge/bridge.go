@@ -10,6 +10,8 @@ import (
 	"github.com/VulpineOS/foxbridge/pkg/cdp"
 )
 
+const syntheticDefaultBrowserContextID = "vulpine-default-context"
+
 // Bridge translates CDP messages to Juggler protocol calls.
 type Bridge struct {
 	backend    backend.Backend
@@ -49,6 +51,24 @@ type Bridge struct {
 	// The next executionContextCreated should trigger isolated world re-emission.
 	pendingContextClearMu sync.Mutex
 	pendingContextClear   map[string]bool // cdpSessionID → true
+}
+
+func (b *Bridge) cdpBrowserContextID(id string) string {
+	if id != "" {
+		return id
+	}
+	return syntheticDefaultBrowserContextID
+}
+
+func (b *Bridge) isSyntheticDefaultBrowserContextID(id string) bool {
+	return id == "" || id == syntheticDefaultBrowserContextID
+}
+
+func (b *Bridge) setJugglerBrowserContext(params map[string]interface{}, id string) {
+	if b.isSyntheticDefaultBrowserContextID(id) {
+		return
+	}
+	params["browserContextId"] = id
 }
 
 // New creates a new Bridge. Set isBiDi to true when using the BiDi backend.

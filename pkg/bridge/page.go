@@ -743,8 +743,8 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 			"headers": params.Headers,
 		}
 		if msg.SessionID != "" {
-			if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-				jugglerParams["browserContextId"] = info.BrowserContextID
+			if info, ok := b.sessions.Get(msg.SessionID); ok {
+				b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 			}
 		}
 
@@ -841,8 +841,8 @@ func (b *Bridge) handlePage(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 				"downloadPath": params.DownloadPath,
 			}
 			if msg.SessionID != "" {
-				if info, ok := b.sessions.Get(msg.SessionID); ok && info.BrowserContextID != "" {
-					jugglerParams["browserContextId"] = info.BrowserContextID
+				if info, ok := b.sessions.Get(msg.SessionID); ok {
+					b.setJugglerBrowserContext(jugglerParams, info.BrowserContextID)
 				}
 			}
 			b.callJuggler("", "Browser.setDownloadOptions", jugglerParams)

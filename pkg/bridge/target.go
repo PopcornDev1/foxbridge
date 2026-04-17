@@ -89,9 +89,7 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 		}
 
 		jugglerParams := map[string]interface{}{}
-		if params.BrowserContextID != "" {
-			jugglerParams["browserContextId"] = params.BrowserContextID
-		}
+		b.setJugglerBrowserContext(jugglerParams, params.BrowserContextID)
 
 		result, err := b.callJuggler("", "Browser.newPage", jugglerParams)
 		if err != nil {
@@ -243,6 +241,7 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 			SessionID:        sessionID,
 			JugglerSessionID: params.TargetID, // use targetID as juggler session
 			TargetID:         params.TargetID,
+			BrowserContextID: b.cdpBrowserContextID(""),
 			Type:             "page",
 		})
 
@@ -250,11 +249,12 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 		b.emitEvent("Target.attachedToTarget", map[string]interface{}{
 			"sessionId": sessionID,
 			"targetInfo": map[string]interface{}{
-				"targetId": params.TargetID,
-				"type":     "page",
-				"title":    "",
-				"url":      "",
-				"attached": true,
+				"targetId":         params.TargetID,
+				"type":             "page",
+				"title":            "",
+				"url":              "",
+				"attached":         true,
+				"browserContextId": b.cdpBrowserContextID(""),
 			},
 			"waitingForDebugger": false,
 		}, "")
