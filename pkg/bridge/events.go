@@ -19,6 +19,7 @@ type targetPair struct {
 	pageTargetID  string
 	browserCtxID  string
 	url           string
+	pageAttached  bool
 }
 
 // autoAttachState tracks auto-attach configuration and pending targets.
@@ -147,10 +148,11 @@ func (b *Bridge) SetupEventSubscriptions() {
 		b.autoAttach.mu.Lock()
 		b.autoAttach.pairs[jugglerSessionID] = pair
 		if b.autoAttach.enabled {
-			// Auto-attach is active — emit TAB attachment immediately.
-			// PAGE attachment will be emitted when Puppeteer sends setAutoAttach on the tab session.
+			// Auto-attach is active — emit the tab attachment and then the page
+			// attachment immediately. Playwright/OpenClaw does not issue a second
+			// Target.setAutoAttach on the tab session in this connect path.
 			b.autoAttach.mu.Unlock()
-			b.emitTabAttach(pair)
+			b.emitAutoAttachPair(pair)
 		} else {
 			// Auto-attach not yet active — queue for later
 			b.autoAttach.pending = append(b.autoAttach.pending, pair)
@@ -957,8 +959,7 @@ func (b *Bridge) SetupEventSubscriptions() {
 	})
 }
 
-// emitTabAttach emits ONLY the tab-level attachment on the browser session.
-// The page-level attachment is deferred until Puppeteer sends setAutoAttach on the tab session.
+// emitTabAttach emits the tab-level attachment on the browser session.
 func (b *Bridge) emitTabAttach(pair *targetPair) {
 	b.emitEvent("Target.attachedToTarget", map[string]interface{}{
 		"sessionId": pair.tabSessionID,
@@ -975,8 +976,21 @@ func (b *Bridge) emitTabAttach(pair *targetPair) {
 	}, "")
 }
 
+func (b *Bridge) emitAutoAttachPair(pair *targetPair) {
+	b.emitTabAttach(pair)
+	b.emitPageAttach(pair)
+}
+
 // emitPageAttach emits the page-level attachment on a tab session.
 func (b *Bridge) emitPageAttach(pair *targetPair) {
+	b.autoAttach.mu.Lock()
+	if pair.pageAttached {
+		b.autoAttach.mu.Unlock()
+		return
+	}
+	pair.pageAttached = true
+	b.autoAttach.mu.Unlock()
+
 	url := pair.url
 	if url == "" {
 		url = "about:blank"

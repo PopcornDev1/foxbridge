@@ -118,6 +118,9 @@ func TestHandleTarget_SetAutoAttach_BrowserLevel(t *testing.T) {
 	if pendingLen != 0 {
 		t.Errorf("pending = %d, want 0 (should be drained)", pendingLen)
 	}
+	if !pair.pageAttached {
+		t.Error("expected browser-level auto-attach to emit the page attachment")
+	}
 }
 
 func TestHandleTarget_SetAutoAttach_SessionLevel_Tab(t *testing.T) {

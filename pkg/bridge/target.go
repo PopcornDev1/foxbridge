@@ -41,8 +41,7 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 		json.Unmarshal(msg.Params, &params)
 
 		if msg.SessionID == "" {
-			// Browser-level setAutoAttach: emit TAB attachedToTarget for all pending targets.
-			// The PAGE attachment happens when Puppeteer sends setAutoAttach on the tab session.
+			// Browser-level setAutoAttach: emit pending target attachments immediately.
 			b.autoAttach.mu.Lock()
 			b.autoAttach.enabled = params.AutoAttach
 			pending := b.autoAttach.pending
@@ -50,9 +49,9 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 			b.autoAttach.mu.Unlock()
 
 			if params.AutoAttach {
-				log.Printf("[target] setAutoAttach on browser session, emitting %d pending tab targets", len(pending))
+				log.Printf("[target] setAutoAttach on browser session, emitting %d pending targets", len(pending))
 				for _, pair := range pending {
-					b.emitTabAttach(pair)
+					b.emitAutoAttachPair(pair)
 				}
 			}
 		} else {
@@ -60,7 +59,7 @@ func (b *Bridge) handleTarget(conn *cdp.Connection, msg *cdp.Message) (json.RawM
 			if info, ok := b.sessions.Get(msg.SessionID); ok {
 				switch info.Type {
 				case "tab":
-					// Tab session: emit the page attachment.
+					// Tab session: emit the page attachment if the client asks for it.
 					b.autoAttach.mu.Lock()
 					for _, pair := range b.autoAttach.pairs {
 						if pair.tabSessionID == msg.SessionID {
