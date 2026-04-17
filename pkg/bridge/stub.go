@@ -96,6 +96,12 @@ func (b *Bridge) handleStub(conn *cdp.Connection, msg *cdp.Message) (json.RawMes
 		return json.RawMessage(`{}`), nil
 	}
 
+	// Browser.setDownloadBehavior — Playwright sends this on connectOverCDP.
+	// We currently treat download behavior as a no-op at the browser domain.
+	if method == "Browser.setDownloadBehavior" {
+		return json.RawMessage(`{}`), nil
+	}
+
 	// SystemInfo.getProcessInfo — some tools query this
 	if method == "SystemInfo.getProcessInfo" {
 		return marshalResult(map[string]interface{}{

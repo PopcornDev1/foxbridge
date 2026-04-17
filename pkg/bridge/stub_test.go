@@ -127,6 +127,18 @@ func TestHandleStub_SetWindowBounds(t *testing.T) {
 	}
 }
 
+func TestHandleStub_SetDownloadBehavior(t *testing.T) {
+	b, _ := newTestBridge()
+	msg := &cdp.Message{ID: 1, Method: "Browser.setDownloadBehavior", Params: json.RawMessage(`{"behavior":"allow"}`)}
+	result, cdpErr := b.handleStub(nil, msg)
+	if cdpErr != nil {
+		t.Fatalf("unexpected error: %s", cdpErr.Message)
+	}
+	if string(result) != "{}" {
+		t.Errorf("result = %s, want {}", string(result))
+	}
+}
+
 func TestHandleStub_SystemInfoGetProcessInfo(t *testing.T) {
 	b, _ := newTestBridge()
 	msg := &cdp.Message{ID: 1, Method: "SystemInfo.getProcessInfo"}
